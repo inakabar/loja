@@ -89,6 +89,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const {
+    supabaseConnected,
     settings,
     installments,
     users,
@@ -225,6 +226,25 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             </button>
             <span className="text-xs font-bold text-slate-800">
               {settings.store_name}
+            </span>
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                supabaseConnected
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}
+              title={
+                supabaseConnected
+                  ? 'Conectado e sincronizado com o banco Supabase'
+                  : 'Variáveis de ambiente do Supabase ausentes neste ambiente (usando cache local)'
+              }
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  supabaseConnected ? 'bg-emerald-500' : 'bg-amber-500'
+                }`}
+              />
+              {supabaseConnected ? 'Supabase Online' : 'Cache Local'}
             </span>
           </div>
 
