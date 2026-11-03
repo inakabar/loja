@@ -5,16 +5,21 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  FileSpreadsheet,
-  ShoppingBag,
+  Briefcase,
+  ShoppingCart,
   MessageSquareWarning,
-  Smartphone,
+  Package,
   Wrench,
   Users,
-  ShieldCheck,
   Settings,
+  Smartphone,
   Menu,
   X,
+  ShieldCheck,
+  Lock,
+  LogOut,
+  Eye,
+  EyeOff,
   UserCheck,
 } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/context/StoreContext';
@@ -25,8 +30,8 @@ interface NavItem {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  badge?: 'alert';
   requiredRoles?: UserRole[];
-  badge?: string | null;
 }
 
 const navItems: NavItem[] = [
@@ -34,46 +39,48 @@ const navItems: NavItem[] = [
     href: '/',
     label: 'Resumo Geral',
     icon: LayoutDashboard,
+    requiredRoles: ['admin', 'venda_investimento', 'venda_loja', 'cobranca'],
   },
   {
     href: '/investimentos',
     label: 'Planilhas / Investimentos',
-    icon: FileSpreadsheet,
+    icon: Briefcase,
     requiredRoles: ['admin', 'venda_investimento', 'cobranca'],
   },
   {
     href: '/vendas',
     label: 'PDV (Vendas & Troca)',
-    icon: ShoppingBag,
+    icon: ShoppingCart,
     requiredRoles: ['admin', 'venda_loja', 'venda_investimento'],
   },
   {
     href: '/cobrancas',
     label: 'Cobranças & WhatsApp',
     icon: MessageSquareWarning,
-    requiredRoles: ['admin', 'cobranca'],
     badge: 'alert',
+    requiredRoles: ['admin', 'cobranca'],
   },
   {
     href: '/estoque',
     label: 'Estoque Geral',
-    icon: Smartphone,
-    requiredRoles: ['admin', 'venda_loja', 'venda_investimento'],
+    icon: Package,
+    requiredRoles: ['admin', 'venda_loja', 'venda_investimento', 'manutencao'],
   },
   {
     href: '/manutencao',
     label: 'Manutenção (OS)',
     icon: Wrench,
-    requiredRoles: ['admin', 'manutencao'],
+    requiredRoles: ['admin', 'manutencao', 'venda_loja'],
   },
   {
     href: '/clientes',
     label: 'Clientes',
     icon: Users,
+    requiredRoles: ['admin', 'venda_loja', 'venda_investimento', 'cobranca'],
   },
   {
     href: '/usuarios',
-    label: 'Usuários & Perfis',
+    label: 'Controle de Usuários',
     icon: ShieldCheck,
     requiredRoles: ['admin'],
   },
@@ -85,19 +92,151 @@ const navItems: NavItem[] = [
   },
 ];
 
+function LoginScreen() {
+  const { login, settings, supabaseConnected } = useStore();
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const res = login(identifier, password);
+    if (!res.ok) {
+      setError(res.error || 'Falha ao autenticar.');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-100">
+      <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center text-slate-950 font-black">
+              <Smartphone className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="font-bold text-sm text-white">
+                {settings.store_name}
+              </h1>
+              <p className="text-[11px] text-slate-400">
+                Controle de Acesso & Perfis
+              </p>
+            </div>
+          </div>
+
+          <span
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+              supabaseConnected
+                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700'
+                : 'bg-amber-950/80 text-amber-300 border-amber-700'
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                supabaseConnected ? 'bg-emerald-400' : 'bg-amber-400'
+              }`}
+            />
+            {supabaseConnected ? 'Supabase' : 'Local'}
+          </span>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
+          <div>
+            <label className="block font-semibold text-slate-300 mb-1">
+              Usuário ou E-mail
+            </label>
+            <input
+              type="text"
+              required
+              autoFocus
+              placeholder="Ex: admin"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-300 mb-1">
+              Senha
+            </label>
+            <div className="relative">
+              <input
+                type={showPwd ? 'text' : 'password'}
+                required
+                placeholder="Digite sua senha"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-3 py-2.5 pr-9 rounded-lg bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd((v) => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                {showPwd ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <div className="p-2.5 rounded-lg bg-rose-950/70 border border-rose-800 text-rose-200 text-[11px] font-medium">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="w-full py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Entrar no Sistema</span>
+          </button>
+        </form>
+
+        <div className="pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+          <span>Primeiro acesso Admin:</span>
+          <code className="px-2 py-0.5 rounded bg-slate-950 text-emerald-300 border border-slate-800">
+            admin / admin123
+          </code>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const {
+    isHydrated,
+    isAuthenticated,
     supabaseConnected,
     settings,
     installments,
-    users,
     currentUser,
-    setCurrentUserId,
+    logout,
     hasRole,
     canAccessInvestment,
   } = useStore();
+
+  if (!isHydrated) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs">
+        Sincronizando com o banco de dados...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginScreen />;
+  }
 
   // Conta apenas os atrasos das planilhas que o usuário atual tem permissão para cobrar
   const accessibleOverdueCount = installments.filter((inst) => {
@@ -111,6 +250,16 @@ function ShellInner({ children }: { children: React.ReactNode }) {
     if (!item.requiredRoles || item.requiredRoles.length === 0) return true;
     return item.requiredRoles.some((r) => hasRole(r));
   });
+
+  // Verifica se o usuário autenticado tem permissão para a rota atual
+  const matchedNavItem = navItems.find((item) =>
+    item.href === '/' ? pathname === '/' : pathname?.startsWith(item.href)
+  );
+  const isRouteAllowed =
+    !matchedNavItem?.requiredRoles ||
+    matchedNavItem.requiredRoles.some((r) => hasRole(r));
+
+  const firstAllowedHref = visibleNavItems[0]?.href || '/';
 
   const renderSidebarContent = () => (
     <div className="flex flex-col h-full bg-slate-900 text-slate-100 border-r border-slate-800">
@@ -174,10 +323,15 @@ function ShellInner({ children }: { children: React.ReactNode }) {
         })}
       </nav>
 
-      {/* Resumo de Perfis do Usuário Ativo no Rodapé */}
-      <div className="p-3 border-t border-slate-800 bg-slate-950/60 space-y-1.5">
-        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
-          Perfis Ativos ({currentUser.roles.length})
+      {/* Resumo de Perfis do Usuário Logado no Rodapé */}
+      <div className="p-3 border-t border-slate-800 bg-slate-950/60 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+            Perfis Ativos ({currentUser.roles.length})
+          </div>
+          <span className="text-[10px] text-slate-400 font-mono">
+            @{currentUser.username}
+          </span>
         </div>
         <div className="flex flex-wrap gap-1">
           {currentUser.roles.map((r) => (
@@ -215,7 +369,7 @@ function ShellInner({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Topbar Compacta com Seletor de Usuário / Perfis */}
+        {/* Topbar Compacta com Usuário Logado e Logout */}
         <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <button
@@ -248,37 +402,61 @@ function ShellInner({ children }: { children: React.ReactNode }) {
             </span>
           </div>
 
-          {/* Seletor de Usuário Logado para Testar Permissões e Planilhas */}
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1">
               <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span className="text-[11px] text-slate-500 hidden sm:inline">
-                Usuário:
+              <span className="text-xs font-bold text-slate-900">
+                {currentUser.name}
               </span>
-              <select
-                value={currentUser.id}
-                onChange={(e) => setCurrentUserId(e.target.value)}
-                className="text-xs font-bold text-slate-900 bg-transparent focus:outline-none cursor-pointer"
-              >
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} [{u.roles.map((r) => USER_ROLE_LABELS[r]).join(' + ')}]
-                  </option>
-                ))}
-              </select>
+              <span className="text-[11px] text-slate-500 hidden sm:inline">
+                ({currentUser.roles.map((r) => USER_ROLE_LABELS[r]).join(' + ')})
+              </span>
             </div>
 
-            <Link
-              href="/usuarios"
-              className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-[11px] font-semibold text-slate-700"
+            {hasRole('admin') && (
+              <Link
+                href="/usuarios"
+                className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-[11px] font-semibold text-slate-700"
+              >
+                Usuários & Senhas
+              </Link>
+            )}
+
+            <button
+              onClick={logout}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-[11px] font-semibold text-rose-700 cursor-pointer"
+              title="Sair do sistema"
             >
-              Perfis
-            </Link>
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sair</span>
+            </button>
           </div>
         </header>
 
         <main className="flex-1 p-4 sm:p-5 max-w-[1400px] w-full mx-auto">
-          {children}
+          {isRouteAllowed ? (
+            children
+          ) : (
+            <div className="bg-white border border-rose-200 rounded-xl p-6 text-center max-w-md mx-auto my-10 space-y-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center mx-auto">
+                <Lock className="w-5 h-5" />
+              </div>
+              <h2 className="text-sm font-bold text-slate-900">
+                Acesso Restrito ao Seu Perfil
+              </h2>
+              <p className="text-xs text-slate-600">
+                O usuário <strong>{currentUser.name}</strong> não possui permissão para acessar esta área.
+              </p>
+              <div className="pt-2">
+                <Link
+                  href={firstAllowedHref}
+                  className="inline-flex items-center px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-bold"
+                >
+                  Ir para Área Permitida
+                </Link>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>

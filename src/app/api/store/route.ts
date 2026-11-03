@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import { getAdminClient } from '@/lib/supabase/admin';
-import { buildInitialSeed } from '@/lib/supabase/initial-seed';
+import {
+  buildInitialSeed,
+  deserializeUserFromDb,
+  serializeUserForDb,
+} from '@/lib/supabase/initial-seed';
+import { AppUser } from '@/types/domain';
 
 const ALLOWED_TABLES = new Set([
   'store_settings',
@@ -25,7 +30,7 @@ export async function GET() {
     const supabase = getAdminClient();
     const [
       { data: settings },
-      { data: users },
+      { data: usersRaw },
       { data: investments },
       { data: withdrawals },
       { data: customers },
@@ -36,7 +41,7 @@ export async function GET() {
       { data: collectionLogs },
     ] = await Promise.all([
       supabase.from('store_settings').select('*').limit(1),
-      supabase.from('app_users').select('*'),
+      supabase.from('app_users').select('*').order('created_at', { ascending: true }),
       supabase
         .from('investments')
         .select('*')
@@ -71,40 +76,37 @@ export async function GET() {
         .order('sent_at', { ascending: false }),
     ]);
 
-    // Se o banco ainda estiver vazio, popula sequencialmente respeitando Foreign Keys
-    if (!investments || investments.length === 0 || !sales || sales.length === 0) {
+    // Garante apenas que exista a configuração inicial e ao menos 1 usuário Admin para login
+    if (!usersRaw || usersRaw.length === 0) {
       const seed = buildInitialSeed();
       await supabase.from('store_settings').upsert(seed.settings);
-      await supabase.from('app_users').upsert(seed.users);
-      await supabase.from('investments').upsert(seed.investments);
-      await supabase.from('customers').upsert(seed.customers);
-      await supabase.from('inventory_items').upsert(seed.inventory);
-      await supabase.from('sales').upsert(seed.sales);
-      await supabase.from('installments').upsert(seed.installments);
-      await supabase.from('investment_withdrawals').upsert(seed.withdrawals);
-      await supabase.from('service_orders').upsert(seed.serviceOrders);
-      await supabase.from('collection_logs').upsert(seed.collectionLogs);
+      await supabase
+        .from('app_users')
+        .upsert(seed.users.map((u) => serializeUserForDb(u)));
 
       return NextResponse.json({
         connected: true,
-        seeded: true,
         settings: seed.settings,
         users: seed.users,
-        investments: seed.investments,
-        withdrawals: seed.withdrawals,
-        customers: seed.customers,
-        inventory: seed.inventory,
-        sales: seed.sales,
-        installments: seed.installments,
-        serviceOrders: seed.serviceOrders,
-        collectionLogs: seed.collectionLogs,
+        investments: investments || [],
+        withdrawals: withdrawals || [],
+        customers: customers || [],
+        inventory: inventory || [],
+        sales: sales || [],
+        installments: installments || [],
+        serviceOrders: serviceOrders || [],
+        collectionLogs: collectionLogs || [],
       });
     }
+
+    const users = (usersRaw || []).map((row) =>
+      deserializeUserFromDb(row as Record<string, unknown>)
+    );
 
     return NextResponse.json({
       connected: true,
       settings: settings?.[0] || null,
-      users: users || [],
+      users,
       investments: investments || [],
       withdrawals: withdrawals || [],
       customers: customers || [],
@@ -118,7 +120,8 @@ export async function GET() {
     return NextResponse.json(
       {
         connected: false,
-        error: err instanceof Error ? err.message : 'Erro ao consultar Supabase',
+        error:
+          err instanceof Error ? err.message : 'Erro ao consultar Supabase',
       },
       { status: 500 }
     );
@@ -137,14 +140,65 @@ export async function POST(request: Request) {
     const body = await request.json();
     const supabase = getAdminClient();
 
-    // Sincronização completa (seed / backup de todas as 10 tabelas)
+    // Limpeza total de dados operacionais (mantendo apenas configurações e Admin)
+    if (body.action === 'clear_all_data') {
+      const seed = buildInitialSeed();
+      await supabase.from('collection_logs').delete().neq('id', '__none__');
+      await supabase.from('installments').delete().neq('id', '__none__');
+      await supabase.from('service_orders').delete().neq('id', '__none__');
+      await supabase.from('sales').delete().neq('id', '__none__');
+      await supabase
+        .from('investment_withdrawals')
+        .delete()
+        .neq('id', '__none__');
+      await supabase.from('inventory_items').delete().neq('id', '__none__');
+      await supabase.from('customers').delete().neq('id', '__none__');
+      await supabase.from('investments').delete().neq('id', '__none__');
+
+      if (body.resetUsersToAdminOnly) {
+        await supabase.from('app_users').delete().neq('id', '__none__');
+        await supabase
+          .from('app_users')
+          .upsert(seed.users.map((u) => serializeUserForDb(u)));
+      }
+
+      return NextResponse.json({
+        ok: true,
+        message: 'Todos os dados de demonstração foram limpos do Supabase!',
+      });
+    }
+
+    // Exclusão de registro específico
+    if (body.action === 'delete_row') {
+      const { table, id } = body;
+      if (!table || !ALLOWED_TABLES.has(table) || !id) {
+        return NextResponse.json(
+          { ok: false, error: 'Parâmetros inválidos para exclusão' },
+          { status: 400 }
+        );
+      }
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) {
+        return NextResponse.json(
+          { ok: false, error: error.message },
+          { status: 500 }
+        );
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Sincronização completa (backup de todas as 10 tabelas)
     if (body.action === 'sync_all') {
       const { payload } = body;
       if (payload.settings) {
         await supabase.from('store_settings').upsert(payload.settings);
       }
       if (payload.users?.length) {
-        await supabase.from('app_users').upsert(payload.users);
+        await supabase
+          .from('app_users')
+          .upsert(
+            (payload.users as AppUser[]).map((u) => serializeUserForDb(u))
+          );
       }
       if (payload.investments?.length) {
         await supabase.from('investments').upsert(payload.investments);
@@ -175,8 +229,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         ok: true,
-        message:
-          'Todas as 10 tabelas foram gravadas com sucesso no Supabase!',
+        message: 'Dados sincronizados com sucesso no Supabase!',
       });
     }
 
@@ -189,7 +242,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const { error } = await supabase.from(table).upsert(data);
+    const formattedData =
+      table === 'app_users'
+        ? Array.isArray(data)
+          ? (data as AppUser[]).map((u) => serializeUserForDb(u))
+          : serializeUserForDb(data as AppUser)
+        : data;
+
+    const { error } = await supabase.from(table).upsert(formattedData);
     if (error) {
       return NextResponse.json(
         { ok: false, error: error.message },

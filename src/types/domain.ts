@@ -16,7 +16,9 @@ export const USER_ROLE_LABELS: Record<UserRole, string> = {
 export interface AppUser {
   id: string;
   name: string;
+  username: string; // Login de acesso (ex: 'admin', 'bruno')
   email: string;
+  password?: string; // Senha de acesso controlada pelo Admin
   roles: UserRole[]; // N perfis por usuário
   allowed_investment_ids: string[]; // Quais planilhas/investimentos este usuário pode acessar/cobrar
   active: boolean;
