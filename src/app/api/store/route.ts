@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import { getAdminClient } from '@/lib/supabase/admin';
+import { buildInitialSeed } from '@/lib/supabase/initial-seed';
 
 const ALLOWED_TABLES = new Set([
   'store_settings',
@@ -69,6 +70,36 @@ export async function GET() {
         .select('*')
         .order('sent_at', { ascending: false }),
     ]);
+
+    // Se o banco ainda estiver vazio, popula sequencialmente respeitando Foreign Keys
+    if (!investments || investments.length === 0 || !sales || sales.length === 0) {
+      const seed = buildInitialSeed();
+      await supabase.from('store_settings').upsert(seed.settings);
+      await supabase.from('app_users').upsert(seed.users);
+      await supabase.from('investments').upsert(seed.investments);
+      await supabase.from('customers').upsert(seed.customers);
+      await supabase.from('inventory_items').upsert(seed.inventory);
+      await supabase.from('sales').upsert(seed.sales);
+      await supabase.from('installments').upsert(seed.installments);
+      await supabase.from('investment_withdrawals').upsert(seed.withdrawals);
+      await supabase.from('service_orders').upsert(seed.serviceOrders);
+      await supabase.from('collection_logs').upsert(seed.collectionLogs);
+
+      return NextResponse.json({
+        connected: true,
+        seeded: true,
+        settings: seed.settings,
+        users: seed.users,
+        investments: seed.investments,
+        withdrawals: seed.withdrawals,
+        customers: seed.customers,
+        inventory: seed.inventory,
+        sales: seed.sales,
+        installments: seed.installments,
+        serviceOrders: seed.serviceOrders,
+        collectionLogs: seed.collectionLogs,
+      });
+    }
 
     return NextResponse.json({
       connected: true,
