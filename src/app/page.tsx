@@ -163,8 +163,15 @@ export default function DashboardPage() {
           <span className="text-[11px] text-slate-400 block">
             Lucro Líquido Projetado
           </span>
-          <strong className="text-sm font-bold text-emerald-400">
-            +{formatCurrencyBRL(consolidated.projectedProfit)}
+          <strong
+            className={`text-sm font-bold ${
+              consolidated.projectedProfit >= 0
+                ? 'text-emerald-400'
+                : 'text-rose-400'
+            }`}
+          >
+            {consolidated.projectedProfit > 0 ? '+' : ''}
+            {formatCurrencyBRL(consolidated.projectedProfit)}
           </strong>
         </div>
       </div>
@@ -252,11 +259,25 @@ export default function DashboardPage() {
                     {formatCurrencyBRL(rep.stockValueAtSuggestedPrice)} (
                     {rep.tradeInDevicesReceivedCount} trocas)
                   </td>
-                  <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
-                    +{formatCurrencyBRL(rep.projectedNetProfit)}
+                  <td
+                    className={`py-2.5 px-3 text-right font-bold ${
+                      rep.projectedNetProfit >= 0
+                        ? 'text-emerald-700'
+                        : 'text-rose-600'
+                    }`}
+                  >
+                    {rep.projectedNetProfit > 0 ? '+' : ''}
+                    {formatCurrencyBRL(rep.projectedNetProfit)}
                   </td>
-                  <td className="py-2.5 px-3 text-right font-bold text-slate-900">
-                    +{rep.projectedRoiPercent}%
+                  <td
+                    className={`py-2.5 px-3 text-right font-bold ${
+                      rep.projectedRoiPercent >= 0
+                        ? 'text-slate-900'
+                        : 'text-rose-600'
+                    }`}
+                  >
+                    {rep.projectedRoiPercent > 0 ? '+' : ''}
+                    {rep.projectedRoiPercent}%
                   </td>
                 </tr>
               ))}

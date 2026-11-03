@@ -260,8 +260,17 @@ export default function InvestimentosPage() {
                     <td className="py-2.5 px-3 text-right text-indigo-700">
                       {formatCurrencyBRL(m.stockValueAtSuggestedPrice)}
                     </td>
-                    <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
-                      +{formatCurrencyBRL(m.projectedNetProfit)} (+{m.projectedRoiPercent}%)
+                    <td
+                      className={`py-2.5 px-3 text-right font-bold ${
+                        m.projectedNetProfit >= 0
+                          ? 'text-emerald-700'
+                          : 'text-rose-600'
+                      }`}
+                    >
+                      {m.projectedNetProfit > 0 ? '+' : ''}
+                      {formatCurrencyBRL(m.projectedNetProfit)} (
+                      {m.projectedRoiPercent > 0 ? '+' : ''}
+                      {m.projectedRoiPercent}%)
                     </td>
                     <td className="py-2.5 px-3">
                       <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[11px] font-semibold">
