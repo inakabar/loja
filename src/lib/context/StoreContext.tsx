@@ -15,7 +15,6 @@ import {
   UserRole,
   WithdrawalReasonType,
 } from '@/types/domain';
-import { isSupabaseConfigured, createClient } from '@/lib/supabase/client';
 
 const STORAGE_KEY = 'istore_erp_state_v2';
 
@@ -27,6 +26,18 @@ function addDays(baseDateStr: string, days: number): string {
 
 function getTodayStr(): string {
   return new Date().toISOString().split('T')[0];
+}
+
+async function persistTableToApi(table: string, data: unknown) {
+  try {
+    await fetch('/api/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table, data }),
+    });
+  } catch (err) {
+    console.error(`Erro ao sincronizar tabela ${table}:`, err);
+  }
 }
 
 export interface CreateCrediarioSaleInput {
@@ -972,84 +983,43 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    const hasSb = isSupabaseConfigured();
-    setSupabaseConnected(hasSb);
-
     async function loadData() {
-      if (hasSb) {
-        try {
-          const supabase = createClient();
-          const [
-            { data: sbSettings },
-            { data: sbUsers },
-            { data: sbInvestments },
-            { data: sbWithdrawals },
-            { data: sbCustomers },
-            { data: sbInventory },
-            { data: sbSales },
-            { data: sbInstallments },
-            { data: sbServiceOrders },
-            { data: sbLogs },
-          ] = await Promise.all([
-            supabase.from('store_settings').select('*').limit(1),
-            supabase.from('app_users').select('*'),
-            supabase
-              .from('investments')
-              .select('*')
-              .order('created_at', { ascending: false }),
-            supabase
-              .from('investment_withdrawals')
-              .select('*')
-              .order('created_at', { ascending: false }),
-            supabase
-              .from('customers')
-              .select('*')
-              .order('created_at', { ascending: false }),
-            supabase
-              .from('inventory_items')
-              .select('*')
-              .order('created_at', { ascending: false }),
-            supabase
-              .from('sales')
-              .select('*')
-              .order('created_at', { ascending: false }),
-            supabase
-              .from('installments')
-              .select('*')
-              .order('due_date', { ascending: true }),
-            supabase
-              .from('service_orders')
-              .select('*')
-              .order('created_at', { ascending: false }),
-            supabase
-              .from('collection_logs')
-              .select('*')
-              .order('sent_at', { ascending: false }),
-          ]);
-
-          if (sbSettings && sbSettings.length > 0) setSettings(sbSettings[0]);
-          if (sbUsers && sbUsers.length > 0) setUsers(sbUsers);
-          if (sbInvestments && sbInvestments.length > 0)
-            setInvestments(sbInvestments);
-          if (sbWithdrawals && sbWithdrawals.length > 0)
-            setWithdrawals(sbWithdrawals);
-          if (sbCustomers && sbCustomers.length > 0) setCustomers(sbCustomers);
-          if (sbInventory && sbInventory.length > 0) setInventory(sbInventory);
-          if (sbSales && sbSales.length > 0) setSales(sbSales);
-          if (sbInstallments && sbInstallments.length > 0)
-            setInstallments(sbInstallments);
-          if (sbServiceOrders && sbServiceOrders.length > 0)
-            setServiceOrders(sbServiceOrders);
-          if (sbLogs && sbLogs.length > 0) setCollectionLogs(sbLogs);
-
-          setIsHydrated(true);
-          return;
-        } catch (err) {
-          console.error(
-            'Erro ao carregar dados do Supabase, usando cache local:',
-            err
-          );
+      try {
+        const res = await fetch('/api/store');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.connected) {
+            setSupabaseConnected(true);
+            if (data.investments && data.investments.length > 0) {
+              if (data.settings) setSettings(data.settings);
+              if (data.users?.length) setUsers(data.users);
+              setInvestments(data.investments);
+              if (data.withdrawals) setWithdrawals(data.withdrawals);
+              if (data.customers?.length) setCustomers(data.customers);
+              if (data.inventory?.length) setInventory(data.inventory);
+              if (data.sales) setSales(data.sales);
+              if (data.installments) setInstallments(data.installments);
+              if (data.serviceOrders) setServiceOrders(data.serviceOrders);
+              if (data.collectionLogs) setCollectionLogs(data.collectionLogs);
+              setIsHydrated(true);
+              return;
+            } else {
+              // Banco novo ainda vazio: popula automaticamente com os dados iniciais!
+              await fetch('/api/store', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'sync_all',
+                  payload: seed,
+                }),
+              });
+              setIsHydrated(true);
+              return;
+            }
+          }
         }
+      } catch (err) {
+        console.error('Fallback para cache local:', err);
       }
 
       try {
@@ -1076,6 +1046,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
 
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1141,10 +1112,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const updateSettings = (partial: Partial<StoreSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...partial };
-      if (isSupabaseConfigured()) {
-        const supabase = createClient();
-        supabase.from('store_settings').upsert(next).then();
-      }
+      persistTableToApi('store_settings', next);
       return next;
     });
   };
@@ -1161,11 +1129,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setUsers((prev) => [...prev, newUser]);
-
-    if (isSupabaseConfigured()) {
-      const supabase = createClient();
-      supabase.from('app_users').upsert(newUser).then();
-    }
+    persistTableToApi('app_users', newUser);
 
     setInvestments((prev) =>
       prev.map((inv) => {
@@ -1176,10 +1140,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             new Set([...(inv.allowed_user_ids || []), newUserId])
           ),
         };
-        if (isSupabaseConfigured()) {
-          const supabase = createClient();
-          supabase.from('investments').upsert(updated).then();
-        }
+        persistTableToApi('investments', updated);
         return updated;
       })
     );
@@ -1190,10 +1151,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       prev.map((u) => {
         if (u.id !== userId) return u;
         const updated = { ...u, ...partial };
-        if (isSupabaseConfigured()) {
-          const supabase = createClient();
-          supabase.from('app_users').upsert(updated).then();
-        }
+        persistTableToApi('app_users', updated);
         return updated;
       })
     );
@@ -1214,10 +1172,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (hasAccess) current.delete(userId);
         else current.add(userId);
         const updated = { ...i, allowed_user_ids: Array.from(current) };
-        if (isSupabaseConfigured()) {
-          const supabase = createClient();
-          supabase.from('investments').upsert(updated).then();
-        }
+        persistTableToApi('investments', updated);
         return updated;
       })
     );
@@ -1229,10 +1184,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (hasAccess) current.delete(investmentId);
         else current.add(investmentId);
         const updated = { ...u, allowed_investment_ids: Array.from(current) };
-        if (isSupabaseConfigured()) {
-          const supabase = createClient();
-          supabase.from('app_users').upsert(updated).then();
-        }
+        persistTableToApi('app_users', updated);
         return updated;
       })
     );
@@ -1257,11 +1209,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setInvestments((prev) => [newInv, ...prev]);
-
-    if (isSupabaseConfigured()) {
-      const supabase = createClient();
-      supabase.from('investments').upsert(newInv).then();
-    }
+    persistTableToApi('investments', newInv);
   };
 
   const createWithdrawal: StoreContextType['createWithdrawal'] = (input) => {
@@ -1296,10 +1244,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                 investment_id: input.targetInvestmentId!,
                 notes: `${item.notes || ''} [Movido da ${sourceInv.name}]`.trim(),
               };
-              if (isSupabaseConfigured()) {
-                const supabase = createClient();
-                supabase.from('inventory_items').upsert(updated).then();
-              }
+              persistTableToApi('inventory_items', updated);
               return updated;
             })
           );
@@ -1312,10 +1257,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                 status: 'withdrawn',
                 quantity: 0,
               };
-              if (isSupabaseConfigured()) {
-                const supabase = createClient();
-                supabase.from('inventory_items').upsert(updated).then();
-              }
+              persistTableToApi('inventory_items', updated);
               return updated;
             })
           );
@@ -1344,11 +1286,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
 
     setWithdrawals((prev) => [newWithdrawal, ...prev]);
-
-    if (isSupabaseConfigured()) {
-      const supabase = createClient();
-      supabase.from('investment_withdrawals').upsert(newWithdrawal).then();
-    }
+    persistTableToApi('investment_withdrawals', newWithdrawal);
   };
 
   const addCustomer: StoreContextType['addCustomer'] = (input) => {
@@ -1358,10 +1296,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setCustomers((prev) => [newCust, ...prev]);
-    if (isSupabaseConfigured()) {
-      const supabase = createClient();
-      supabase.from('customers').upsert(newCust).then();
-    }
+    persistTableToApi('customers', newCust);
     return newCust;
   };
 
@@ -1370,10 +1305,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       prev.map((c) => {
         if (c.id !== customerId) return c;
         const updated = { ...c, whatsapp_opt_in: !c.whatsapp_opt_in };
-        if (isSupabaseConfigured()) {
-          const supabase = createClient();
-          supabase.from('customers').upsert(updated).then();
-        }
+        persistTableToApi('customers', updated);
         return updated;
       })
     );
@@ -1388,10 +1320,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setInventory((prev) => [newItem, ...prev]);
-    if (isSupabaseConfigured()) {
-      const supabase = createClient();
-      supabase.from('inventory_items').upsert(newItem).then();
-    }
+    persistTableToApi('inventory_items', newItem);
   };
 
   const createSaleWithTradeIn: StoreContextType['createSaleWithTradeIn'] = (
@@ -1411,6 +1340,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     let tradeInItemId: string | null = null;
     let tradeInDisplayModel: string | null = null;
+
+    const updatedSoldItem: InventoryItem = {
+      ...soldItem,
+      quantity: Math.max(0, soldItem.quantity - 1),
+      status: soldItem.quantity - 1 <= 0 ? 'sold' : soldItem.status,
+    };
 
     if (input.hasTradeIn && input.tradeInModel && input.tradeInValue > 0) {
       tradeInItemId = `item-trade-${Date.now()}`;
@@ -1445,32 +1380,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       setInventory((prev) => [
         tradeInItem,
-        ...prev.map((item) =>
-          item.id === soldItem.id
-            ? {
-                ...item,
-                quantity: Math.max(0, item.quantity - 1),
-                status:
-                  item.quantity - 1 <= 0
-                    ? ('sold' as const)
-                    : item.status,
-              }
-            : item
-        ),
+        ...prev.map((item) => (item.id === soldItem.id ? updatedSoldItem : item)),
       ]);
-
-      if (isSupabaseConfigured()) {
-        const supabase = createClient();
-        supabase.from('inventory_items').upsert(tradeInItem).then();
-        supabase
-          .from('inventory_items')
-          .update({
-            quantity: Math.max(0, soldItem.quantity - 1),
-            status: soldItem.quantity - 1 <= 0 ? 'sold' : soldItem.status,
-          })
-          .eq('id', soldItem.id)
-          .then();
-      }
+      persistTableToApi('inventory_items', [tradeInItem, updatedSoldItem]);
 
       if (input.tradeInNeedsRepair) {
         const internalOs: ServiceOrder = {
@@ -1495,37 +1407,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           completed_at: null,
         };
         setServiceOrders((prev) => [internalOs, ...prev]);
-        if (isSupabaseConfigured()) {
-          const supabase = createClient();
-          supabase.from('service_orders').upsert(internalOs).then();
-        }
+        persistTableToApi('service_orders', internalOs);
       }
     } else {
       setInventory((prev) =>
-        prev.map((item) =>
-          item.id === soldItem.id
-            ? {
-                ...item,
-                quantity: Math.max(0, item.quantity - 1),
-                status:
-                  item.quantity - 1 <= 0
-                    ? ('sold' as const)
-                    : item.status,
-              }
-            : item
-        )
+        prev.map((item) => (item.id === soldItem.id ? updatedSoldItem : item))
       );
-      if (isSupabaseConfigured()) {
-        const supabase = createClient();
-        supabase
-          .from('inventory_items')
-          .update({
-            quantity: Math.max(0, soldItem.quantity - 1),
-            status: soldItem.quantity - 1 <= 0 ? 'sold' : soldItem.status,
-          })
-          .eq('id', soldItem.id)
-          .then();
-      }
+      persistTableToApi('inventory_items', updatedSoldItem);
     }
 
     const netSalePrice = Math.max(0, input.salePrice - (input.discount || 0));
@@ -1571,10 +1459,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
 
     setSales((prev) => [newSale, ...prev]);
-    if (isSupabaseConfigured()) {
-      const supabase = createClient();
-      supabase.from('sales').upsert(newSale).then();
-    }
+    persistTableToApi('sales', newSale);
 
     if (input.paymentType === 'crediario' && financedPrincipal > 0) {
       const generatedInstallments: Installment[] = [];
@@ -1602,10 +1487,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         });
       }
       setInstallments((prev) => [...generatedInstallments, ...prev]);
-      if (isSupabaseConfigured()) {
-        const supabase = createClient();
-        supabase.from('installments').upsert(generatedInstallments).then();
-      }
+      persistTableToApi('installments', generatedInstallments);
     }
 
     return newSale;
@@ -1620,51 +1502,32 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }) => {
     const nowIso = new Date().toISOString();
     setInstallments((prev) =>
-      prev.map((inst) =>
-        inst.id === installmentId
-          ? {
-              ...inst,
-              paid_amount: Number(paidAmount.toFixed(2)),
-              late_fee_applied: Number(lateFeeApplied.toFixed(2)),
-              interest_applied: Number(interestApplied.toFixed(2)),
-              discount_applied: Number(discountApplied.toFixed(2)),
-              paid_at: nowIso,
-              status: 'paid',
-            }
-          : inst
-      )
-    );
-    if (isSupabaseConfigured()) {
-      const supabase = createClient();
-      supabase
-        .from('installments')
-        .update({
+      prev.map((inst) => {
+        if (inst.id !== installmentId) return inst;
+        const updated: Installment = {
+          ...inst,
           paid_amount: Number(paidAmount.toFixed(2)),
           late_fee_applied: Number(lateFeeApplied.toFixed(2)),
           interest_applied: Number(interestApplied.toFixed(2)),
           discount_applied: Number(discountApplied.toFixed(2)),
           paid_at: nowIso,
           status: 'paid',
-        })
-        .eq('id', installmentId)
-        .then();
-    }
+        };
+        persistTableToApi('installments', updated);
+        return updated;
+      })
+    );
   };
 
   const markInstallmentLoss = (installmentId: string) => {
     setInstallments((prev) =>
-      prev.map((inst) =>
-        inst.id === installmentId ? { ...inst, status: 'loss' } : inst
-      )
+      prev.map((inst) => {
+        if (inst.id !== installmentId) return inst;
+        const updated: Installment = { ...inst, status: 'loss' };
+        persistTableToApi('installments', updated);
+        return updated;
+      })
     );
-    if (isSupabaseConfigured()) {
-      const supabase = createClient();
-      supabase
-        .from('installments')
-        .update({ status: 'loss' })
-        .eq('id', installmentId)
-        .then();
-    }
   };
 
   const addServiceOrder: StoreContextType['addServiceOrder'] = (input) => {
@@ -1675,25 +1538,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       created_at: new Date().toISOString(),
     };
     setServiceOrders((prev) => [newOs, ...prev]);
-    if (isSupabaseConfigured()) {
-      const supabase = createClient();
-      supabase.from('service_orders').upsert(newOs).then();
-    }
+    persistTableToApi('service_orders', newOs);
 
     if (input.order_type === 'internal_stock' && input.inventory_item_id) {
       setInventory((prev) =>
-        prev.map((item) =>
-          item.id === input.inventory_item_id
-            ? {
-                ...item,
-                repair_cost: (item.repair_cost || 0) + (input.parts_cost || 0),
-                status:
-                  input.status === 'pronto' || input.status === 'entregue'
-                    ? 'in_stock'
-                    : 'in_repair',
-              }
-            : item
-        )
+        prev.map((item) => {
+          if (item.id !== input.inventory_item_id) return item;
+          const updated: InventoryItem = {
+            ...item,
+            repair_cost: (item.repair_cost || 0) + (input.parts_cost || 0),
+            status:
+              input.status === 'pronto' || input.status === 'entregue'
+                ? 'in_stock'
+                : 'in_repair',
+          };
+          persistTableToApi('inventory_items', updated);
+          return updated;
+        })
       );
     }
   };
@@ -1706,18 +1567,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ? new Date().toISOString()
           : target?.completed_at;
       setServiceOrders((prev) =>
-        prev.map((so) =>
-          so.id === id ? { ...so, status, completed_at: completedAt } : so
-        )
+        prev.map((so) => {
+          if (so.id !== id) return so;
+          const updated: ServiceOrder = {
+            ...so,
+            status,
+            completed_at: completedAt,
+          };
+          persistTableToApi('service_orders', updated);
+          return updated;
+        })
       );
-      if (isSupabaseConfigured()) {
-        const supabase = createClient();
-        supabase
-          .from('service_orders')
-          .update({ status, completed_at: completedAt })
-          .eq('id', id)
-          .then();
-      }
 
       if (
         target &&
@@ -1726,11 +1586,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         (status === 'pronto' || status === 'entregue')
       ) {
         setInventory((prev) =>
-          prev.map((item) =>
-            item.id === target.inventory_item_id
-              ? { ...item, status: 'in_stock' }
-              : item
-          )
+          prev.map((item) => {
+            if (item.id !== target.inventory_item_id) return item;
+            const updated: InventoryItem = { ...item, status: 'in_stock' };
+            persistTableToApi('inventory_items', updated);
+            return updated;
+          })
         );
       }
     };
@@ -1752,56 +1613,52 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       sent_at: nowIso,
     };
     setCollectionLogs((prev) => [newLog, ...prev]);
+    persistTableToApi('collection_logs', newLog);
+
     setInstallments((prev) =>
-      prev.map((inst) =>
-        inst.id === input.installmentId
-          ? {
-              ...inst,
-              collection_count: (inst.collection_count || 0) + 1,
-              last_collection_at: nowIso,
-            }
-          : inst
-      )
+      prev.map((inst) => {
+        if (inst.id !== input.installmentId) return inst;
+        const updated: Installment = {
+          ...inst,
+          collection_count: (inst.collection_count || 0) + 1,
+          last_collection_at: nowIso,
+        };
+        persistTableToApi('installments', updated);
+        return updated;
+      })
     );
-    if (isSupabaseConfigured()) {
-      const supabase = createClient();
-      supabase.from('collection_logs').upsert(newLog).then();
-    }
   };
 
-  /**
-   * Envia todos os dados locais atuais para as 10 tabelas do novo Supabase com 1 clique!
-   */
   const syncAllToSupabase = async (): Promise<{
     ok: boolean;
     message: string;
   }> => {
-    if (!isSupabaseConfigured()) {
-      return {
-        ok: false,
-        message:
-          'Configure primeiro NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no .env.local',
-      };
-    }
-
     try {
-      const supabase = createClient();
-      await supabase.from('store_settings').upsert(settings);
-      await supabase.from('app_users').upsert(users);
-      await supabase.from('investments').upsert(investments);
-      await supabase.from('customers').upsert(customers);
-      await supabase.from('inventory_items').upsert(inventory);
-      await supabase.from('sales').upsert(sales);
-      await supabase.from('installments').upsert(installments);
-      await supabase.from('investment_withdrawals').upsert(withdrawals);
-      await supabase.from('service_orders').upsert(serviceOrders);
-      await supabase.from('collection_logs').upsert(collectionLogs);
-
-      return {
-        ok: true,
-        message:
-          'Todas as 10 tabelas foram sincronizadas com sucesso no Supabase!',
-      };
+      const res = await fetch('/api/store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync_all',
+          payload: {
+            settings,
+            users,
+            investments,
+            customers,
+            inventory,
+            sales,
+            installments,
+            withdrawals,
+            serviceOrders,
+            collectionLogs,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setSupabaseConnected(true);
+        return { ok: true, message: data.message };
+      }
+      return { ok: false, message: data.error || 'Erro ao sincronizar' };
     } catch (err) {
       return {
         ok: false,
