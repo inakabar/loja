@@ -1,6 +1,7 @@
 export type UserRole =
   | 'admin'
   | 'cobranca'
+  | 'crediario'
   | 'venda_loja'
   | 'venda_investimento'
   | 'manutencao';
@@ -8,6 +9,7 @@ export type UserRole =
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
   admin: 'Admin',
   cobranca: 'Cobrança',
+  crediario: 'Crediário',
   venda_loja: 'Venda da Loja',
   venda_investimento: 'Venda dos Investimentos',
   manutencao: 'Manutenção',
@@ -88,12 +90,49 @@ export interface Customer {
   created_at: string;
 }
 
+export type ProductSubcategory =
+  | 'celular'
+  | 'tablet_relogio'
+  | 'capinha'
+  | 'pelicula'
+  | 'carregador_cabo'
+  | 'fone_audio'
+  | 'peca_tela'
+  | 'peca_bateria'
+  | 'peca_conector'
+  | 'peca_outros'
+  | 'outros';
+
+export const PRODUCT_SUBCATEGORY_LABELS: Record<ProductSubcategory, string> = {
+  celular: '📱 Celular / Smartphone',
+  tablet_relogio: '⌚ Tablet / Smartwatch',
+  capinha: '🛡️ Capinha / Case',
+  pelicula: '✨ Película Protetora',
+  carregador_cabo: '🔌 Carregador / Cabo / Fonte',
+  fone_audio: '🎧 Fone / Caixa de Som',
+  peca_tela: '🔧 Peça: Tela / Display',
+  peca_bateria: '🔋 Peça: Bateria',
+  peca_conector: '⚡ Peça: Conector / Flex',
+  peca_outros: '🔩 Peça: Outros Componentes',
+  outros: '📦 Outros Produtos',
+};
+
+export interface PurchaseHistoryEntry {
+  id: string;
+  date: string;
+  quantity: number;
+  unit_cost: number;
+  extra_cost: number;
+  supplier_or_notes?: string;
+}
+
 export interface InventoryItem {
   id: string;
   investment_id: string; // ID da planilha ou 'loja' para estoque próprio da loja
   origin_sale_id?: string | null;
   generation: number; // 1 = Lote inicial, 2 = 1ª Troca, 3 = 2ª Troca...
   category: 'device' | 'accessory' | 'part';
+  subcategory?: ProductSubcategory;
   brand: string;
   model: string;
   storage?: string;
@@ -107,6 +146,7 @@ export interface InventoryItem {
   quantity: number;
   status: 'in_stock' | 'in_repair' | 'sold' | 'withdrawn';
   notes?: string;
+  purchase_history?: PurchaseHistoryEntry[];
   created_at: string;
 }
 
@@ -160,6 +200,16 @@ export interface Installment {
   collection_count: number;
 }
 
+export interface ServiceOrderPartUsage {
+  id: string;
+  inventory_item_id?: string | null;
+  part_name: string;
+  quantity: number;
+  unit_cost: number;
+  need_to_buy: boolean;
+  bought: boolean;
+}
+
 export interface ServiceOrder {
   id: string;
   code: string;
@@ -167,12 +217,18 @@ export interface ServiceOrder {
   customer_id?: string | null;
   customer_name: string;
   customer_phone: string;
+  customer_cpf?: string;
   inventory_item_id?: string | null;
   investment_id?: string | null;
+  device_brand?: string;
   device_model: string;
+  device_color?: string;
+  device_password?: string;
   imei?: string;
+  entry_checklist?: string;
   reported_defect: string;
   technical_diagnosis?: string;
+  used_parts?: ServiceOrderPartUsage[];
   parts_cost: number;
   service_price: number;
   status: 'orcamento' | 'aprovado' | 'aguardando_peca' | 'em_bancada' | 'pronto' | 'entregue';

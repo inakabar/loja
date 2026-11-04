@@ -21,6 +21,7 @@ import {
   Eye,
   EyeOff,
   UserCheck,
+  Calculator,
 } from 'lucide-react';
 import { StoreProvider, useStore } from '@/lib/context/StoreContext';
 import { calculateInstallmentLateFees } from '@/lib/calculators/crediario';
@@ -49,9 +50,15 @@ const navItems: NavItem[] = [
   },
   {
     href: '/vendas',
-    label: 'PDV (Vendas & Troca)',
+    label: 'PDV (Vendas à Vista)',
     icon: ShoppingCart,
     requiredRoles: ['admin', 'venda_loja', 'venda_investimento'],
+  },
+  {
+    href: '/crediario',
+    label: 'Crediário & Troca',
+    icon: Calculator,
+    requiredRoles: ['admin', 'crediario'],
   },
   {
     href: '/cobrancas',

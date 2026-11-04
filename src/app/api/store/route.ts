@@ -3,10 +3,14 @@ import { isSupabaseConfigured } from '@/lib/supabase/client';
 import { getAdminClient } from '@/lib/supabase/admin';
 import {
   buildInitialSeed,
+  deserializeInventoryFromDb,
+  deserializeServiceOrderFromDb,
   deserializeUserFromDb,
+  serializeInventoryForDb,
+  serializeServiceOrderForDb,
   serializeUserForDb,
 } from '@/lib/supabase/initial-seed';
-import { AppUser } from '@/types/domain';
+import { AppUser, InventoryItem, ServiceOrder } from '@/types/domain';
 
 const ALLOWED_TABLES = new Set([
   'store_settings',
@@ -102,6 +106,12 @@ export async function GET() {
     const users = (usersRaw || []).map((row) =>
       deserializeUserFromDb(row as Record<string, unknown>)
     );
+    const inventoryParsed = (inventory || []).map((row) =>
+      deserializeInventoryFromDb(row as Record<string, unknown>)
+    );
+    const serviceOrdersParsed = (serviceOrders || []).map((row) =>
+      deserializeServiceOrderFromDb(row as Record<string, unknown>)
+    );
 
     return NextResponse.json({
       connected: true,
@@ -110,10 +120,10 @@ export async function GET() {
       investments: investments || [],
       withdrawals: withdrawals || [],
       customers: customers || [],
-      inventory: inventory || [],
+      inventory: inventoryParsed,
       sales: sales || [],
       installments: installments || [],
-      serviceOrders: serviceOrders || [],
+      serviceOrders: serviceOrdersParsed,
       collectionLogs: collectionLogs || [],
     });
   } catch (err) {
@@ -207,7 +217,13 @@ export async function POST(request: Request) {
         await supabase.from('customers').upsert(payload.customers);
       }
       if (payload.inventory?.length) {
-        await supabase.from('inventory_items').upsert(payload.inventory);
+        await supabase
+          .from('inventory_items')
+          .upsert(
+            (payload.inventory as InventoryItem[]).map((item) =>
+              serializeInventoryForDb(item)
+            )
+          );
       }
       if (payload.sales?.length) {
         await supabase.from('sales').upsert(payload.sales);
@@ -221,7 +237,13 @@ export async function POST(request: Request) {
           .upsert(payload.withdrawals);
       }
       if (payload.serviceOrders?.length) {
-        await supabase.from('service_orders').upsert(payload.serviceOrders);
+        await supabase
+          .from('service_orders')
+          .upsert(
+            (payload.serviceOrders as ServiceOrder[]).map((so) =>
+              serializeServiceOrderForDb(so)
+            )
+          );
       }
       if (payload.collectionLogs?.length) {
         await supabase.from('collection_logs').upsert(payload.collectionLogs);
@@ -242,12 +264,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const formattedData =
-      table === 'app_users'
-        ? Array.isArray(data)
-          ? (data as AppUser[]).map((u) => serializeUserForDb(u))
-          : serializeUserForDb(data as AppUser)
-        : data;
+    let formattedData = data;
+    if (table === 'app_users') {
+      formattedData = Array.isArray(data)
+        ? (data as AppUser[]).map((u) => serializeUserForDb(u))
+        : serializeUserForDb(data as AppUser);
+    } else if (table === 'inventory_items') {
+      formattedData = Array.isArray(data)
+        ? (data as InventoryItem[]).map((i) => serializeInventoryForDb(i))
+        : serializeInventoryForDb(data as InventoryItem);
+    } else if (table === 'service_orders') {
+      formattedData = Array.isArray(data)
+        ? (data as ServiceOrder[]).map((so) => serializeServiceOrderForDb(so))
+        : serializeServiceOrderForDb(data as ServiceOrder);
+    }
 
     const { error } = await supabase.from(table).upsert(formattedData);
     if (error) {

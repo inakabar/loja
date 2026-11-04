@@ -20,6 +20,12 @@ export function formatDateBR(dateStr: string): string {
   return `${d}/${m}/${y}`;
 }
 
+export function buildWhatsAppWebUrl(phone: string, text: string): string {
+  const digits = (phone || '').replace(/\D/g, '');
+  const cleanPhone = digits.startsWith('55') ? digits : `55${digits}`;
+  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
+}
+
 /**
  * Sorteia um intervalo aleatório em segundos entre o mínimo (ex: 8s) e o máximo (ex: 120s).
  * Usa distribuição variada para simular perfeitamente o ritmo humano no WhatsApp.

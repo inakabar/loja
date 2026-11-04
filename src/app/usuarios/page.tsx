@@ -19,6 +19,7 @@ const ALL_ROLES: UserRole[] = [
   'cobranca',
   'venda_loja',
   'venda_investimento',
+  'crediario',
   'manutencao',
   'admin',
 ];
