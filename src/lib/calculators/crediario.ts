@@ -224,9 +224,16 @@ export function calculateInvestmentMetrics(
     0
   );
 
-  const internalRepairCosts = invServiceOrders
+  const osInternalCosts = invServiceOrders
     .filter((so) => so.order_type === 'internal_stock')
     .reduce((acc, so) => acc + (so.parts_cost || 0), 0);
+
+  const itemsRepairCosts = invItems.reduce(
+    (acc, item) => acc + (item.repair_cost || 0),
+    0
+  );
+
+  const internalRepairCosts = Math.max(osInternalCosts, itemsRepairCosts);
 
   const serviceOrdersRevenue = invServiceOrders
     .filter(

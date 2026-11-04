@@ -113,7 +113,7 @@ export interface InventoryItem {
 export interface Sale {
   id: string;
   code: string;
-  customer_id: string;
+  customer_id: string | null;
   customer_name: string;
   investment_id: string; // ID da planilha ou 'loja'
   sold_item_id: string;

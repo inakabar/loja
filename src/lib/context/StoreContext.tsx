@@ -141,10 +141,13 @@ interface StoreContextType {
   addCustomer: (input: Omit<Customer, 'id' | 'created_at'>) => Customer;
   toggleCustomerOptIn: (customerId: string) => void;
   addInventoryItem: (
-    input: Omit<
-      InventoryItem,
-      'id' | 'created_at' | 'generation' | 'repair_cost'
-    >
+    input: Omit<InventoryItem, 'id' | 'created_at' | 'generation'> & {
+      repair_cost?: number;
+    }
+  ) => void;
+  updateInventoryItem: (
+    itemId: string,
+    partial: Partial<InventoryItem>
   ) => void;
   createSaleWithTradeIn: (input: CreateCrediarioSaleInput) => Sale;
   payInstallment: (input: {
@@ -620,11 +623,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ...input,
       id: `item-${Date.now()}`,
       generation: 1,
-      repair_cost: 0,
+      repair_cost: Number(input.repair_cost) || 0,
       created_at: new Date().toISOString(),
     };
     setInventory((prev) => [newItem, ...prev]);
     persistTableToApi('inventory_items', newItem);
+  };
+
+  const updateInventoryItem: StoreContextType['updateInventoryItem'] = (
+    itemId,
+    partial
+  ) => {
+    setInventory((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        const updated: InventoryItem = { ...item, ...partial };
+        persistTableToApi('inventory_items', updated);
+        return updated;
+      })
+    );
   };
 
   const createSaleWithTradeIn: StoreContextType['createSaleWithTradeIn'] = (
@@ -633,9 +650,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const customer = customers.find((c) => c.id === input.customerId);
     const soldItem = inventory.find((i) => i.id === input.soldItemId);
 
-    if (!customer || !soldItem) {
-      throw new Error('Cliente ou produto não encontrado.');
+    if (!soldItem) {
+      throw new Error('Produto não encontrado.');
     }
+    if (input.paymentType === 'crediario' && !customer) {
+      throw new Error('Selecione um cliente cadastrado para vendas no crediário.');
+    }
+
+    const customerIdVal = customer ? customer.id : null;
+    const customerNameVal = customer
+      ? customer.name
+      : 'Cliente Balcão (À Vista)';
+    const customerPhoneVal = customer ? customer.phone_whatsapp : '-';
 
     const saleId = `sale-${Date.now()}`;
     const saleCode = `VEN-${101 + sales.length}`;
@@ -678,7 +704,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           Number((input.tradeInValue * 1.45).toFixed(0)),
         quantity: 1,
         status: input.tradeInNeedsRepair ? 'in_repair' : 'in_stock',
-        notes: `Entrou na venda ${saleCode} (${customer.name}).`,
+        notes: `Entrou na venda ${saleCode} (${customerNameVal}).`,
         created_at: new Date().toISOString(),
       };
 
@@ -721,13 +747,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
 
     const netSalePrice = Math.max(0, input.salePrice - (input.discount || 0));
-    const totalEntry =
-      (input.cashDownPayment || 0) +
-      (input.hasTradeIn ? input.tradeInValue || 0 : 0);
-    const financedPrincipal = Math.max(0, netSalePrice - totalEntry);
-    const totalFinancedWithInterest = Number(
-      (input.finalInstallmentValue * input.installmentsCount).toFixed(2)
-    );
+    const tradeInAmount = input.hasTradeIn ? input.tradeInValue || 0 : 0;
+    const isAvista = input.paymentType !== 'crediario';
+
+    const effectiveCashPaid = isAvista
+      ? Math.max(0, Number((netSalePrice - tradeInAmount).toFixed(2)))
+      : Number(input.cashDownPayment || 0);
+
+    const totalEntry = effectiveCashPaid + tradeInAmount;
+    const financedPrincipal = isAvista
+      ? 0
+      : Math.max(0, netSalePrice - totalEntry);
+    const totalFinancedWithInterest = isAvista
+      ? 0
+      : Number(
+          (input.finalInstallmentValue * input.installmentsCount).toFixed(2)
+        );
     const totalSaleFinal = Number(
       (totalEntry + totalFinancedWithInterest).toFixed(2)
     );
@@ -735,26 +770,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const newSale: Sale = {
       id: saleId,
       code: saleCode,
-      customer_id: customer.id,
-      customer_name: customer.name,
+      customer_id: customerIdVal,
+      customer_name: customerNameVal,
       investment_id: investmentId,
       sold_item_id: soldItem.id,
       sold_item_name: `${soldItem.brand} ${soldItem.model}`,
       sale_price: input.salePrice,
       discount: input.discount || 0,
-      cash_down_payment: input.cashDownPayment || 0,
+      cash_down_payment: effectiveCashPaid,
       trade_in_item_id: tradeInItemId,
       trade_in_model: tradeInDisplayModel,
-      trade_in_value: input.hasTradeIn ? input.tradeInValue : 0,
+      trade_in_value: tradeInAmount,
       financed_principal: financedPrincipal,
-      monthly_rate_percent: input.monthlyRatePercent,
-      installments_count: input.installmentsCount,
-      suggested_installment_value: input.suggestedInstallmentValue,
-      final_installment_value: input.finalInstallmentValue,
-      is_manual_override:
-        Math.abs(
-          input.finalInstallmentValue - input.suggestedInstallmentValue
-        ) >= 0.01,
+      monthly_rate_percent: isAvista ? 0 : input.monthlyRatePercent,
+      installments_count: isAvista ? 0 : input.installmentsCount,
+      suggested_installment_value: isAvista
+        ? 0
+        : input.suggestedInstallmentValue,
+      final_installment_value: isAvista ? 0 : input.finalInstallmentValue,
+      is_manual_override: isAvista
+        ? false
+        : Math.abs(
+            input.finalInstallmentValue - input.suggestedInstallmentValue
+          ) >= 0.01,
       total_financed_with_interest: totalFinancedWithInterest,
       total_sale_final: totalSaleFinal,
       payment_type: input.paymentType,
@@ -765,7 +803,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setSales((prev) => [newSale, ...prev]);
     persistTableToApi('sales', newSale);
 
-    if (input.paymentType === 'crediario' && financedPrincipal > 0) {
+    if (input.paymentType === 'crediario' && financedPrincipal > 0 && customerIdVal) {
       const generatedInstallments: Installment[] = [];
       for (let i = 1; i <= input.installmentsCount; i++) {
         const dueDate = addDays(
@@ -777,9 +815,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           sale_id: saleId,
           sale_code: saleCode,
           investment_id: investmentId,
-          customer_id: customer.id,
-          customer_name: customer.name,
-          customer_phone: customer.phone_whatsapp,
+          customer_id: customerIdVal,
+          customer_name: customerNameVal,
+          customer_phone: customerPhoneVal,
           sold_item_name: `${soldItem.brand} ${soldItem.model}`,
           installment_number: i,
           total_installments: input.installmentsCount,
@@ -1024,6 +1062,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         addCustomer,
         toggleCustomerOptIn,
         addInventoryItem,
+        updateInventoryItem,
         createSaleWithTradeIn,
         payInstallment,
         markInstallmentLoss,
