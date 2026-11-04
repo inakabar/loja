@@ -45,6 +45,7 @@ async function persistTableToApi(table: string, data: unknown) {
 export interface CreateCrediarioSaleInput {
   customerId: string;
   soldItemId: string;
+  quantitySold?: number;
   salePrice: number;
   discount: number;
   cashDownPayment: number;
@@ -671,10 +672,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     let tradeInItemId: string | null = null;
     let tradeInDisplayModel: string | null = null;
 
+    const qtySold = Math.max(
+      1,
+      Math.min(soldItem.quantity || 1, Number(input.quantitySold) || 1)
+    );
+    const remainingQty = Math.max(0, (soldItem.quantity || 1) - qtySold);
+
     const updatedSoldItem: InventoryItem = {
       ...soldItem,
-      quantity: Math.max(0, soldItem.quantity - 1),
-      status: soldItem.quantity - 1 <= 0 ? 'sold' : soldItem.status,
+      quantity: remainingQty,
+      status: remainingQty <= 0 ? 'sold' : 'in_stock',
     };
 
     if (input.hasTradeIn && input.tradeInModel && input.tradeInValue > 0) {
@@ -774,7 +781,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       customer_name: customerNameVal,
       investment_id: investmentId,
       sold_item_id: soldItem.id,
-      sold_item_name: `${soldItem.brand} ${soldItem.model}`,
+      sold_item_name:
+        qtySold > 1
+          ? `${qtySold}x ${soldItem.brand} ${soldItem.model}`
+          : `${soldItem.brand} ${soldItem.model}`,
       sale_price: input.salePrice,
       discount: input.discount || 0,
       cash_down_payment: effectiveCashPaid,

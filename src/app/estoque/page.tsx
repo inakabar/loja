@@ -44,6 +44,7 @@ export default function EstoquePage() {
 
   // Modal Editar Produto / Lançar Custos de Manutenção/Peças
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [editInvestmentId, setEditInvestmentId] = useState<string>('loja');
   const [editCategory, setEditCategory] = useState<'device' | 'accessory'>(
     'device'
   );
@@ -66,7 +67,13 @@ export default function EstoquePage() {
   });
 
   const handleOpenNewModal = () => {
-    setInvestmentId(visibleInvestments[0]?.id || 'loja');
+    setInvestmentId(
+      filterInvId !== 'all'
+        ? filterInvId
+        : hasRole('venda_loja')
+        ? 'loja'
+        : visibleInvestments[0]?.id || 'loja'
+    );
     setProductType('device');
     setBrand('Apple');
     setModel('');
@@ -85,7 +92,6 @@ export default function EstoquePage() {
   const handleSwitchProductType = (type: 'device' | 'accessory') => {
     setProductType(type);
     if (type === 'accessory') {
-      setInvestmentId('loja');
       setBrand('Acessório');
       setStorage('');
       setImei('');
@@ -107,8 +113,9 @@ export default function EstoquePage() {
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!model.trim()) return;
+    const targetInv = investmentId || 'loja';
     addInventoryItem({
-      investment_id: investmentId || 'loja',
+      investment_id: targetInv,
       origin_sale_id: null,
       category: productType,
       brand: brand.trim() || (productType === 'accessory' ? 'Loja' : 'Apple'),
@@ -126,6 +133,13 @@ export default function EstoquePage() {
       status: 'in_stock',
       notes: costNotes.trim() || undefined,
     });
+    // Se o filtro da tela estava em outra planilha, muda para 'all' ou para a origem escolhida para mostrar o produto salvo imediatamente
+    if (filterInvId !== 'all' && filterInvId !== targetInv) {
+      setFilterInvId('all');
+    }
+    if (filterOrigin === 'trade_in') {
+      setFilterOrigin('all');
+    }
     setModel('');
     setImei('');
     setCostNotes('');
@@ -134,6 +148,7 @@ export default function EstoquePage() {
 
   const handleOpenEditModal = (item: InventoryItem) => {
     setEditingItem(item);
+    setEditInvestmentId(item.investment_id || 'loja');
     setEditCategory(item.category === 'accessory' ? 'accessory' : 'device');
     setEditPurchaseCost(String(item.purchase_cost || 0));
     setEditRepairCost(String(item.repair_cost || 0));
@@ -150,6 +165,7 @@ export default function EstoquePage() {
       (Number(editRepairCost) || 0) + (Number(editAddExtraCost) || 0);
 
     updateInventoryItem(editingItem.id, {
+      investment_id: editInvestmentId,
       category: editCategory,
       purchase_cost: Number(editPurchaseCost) || 0,
       repair_cost: totalRepair,
@@ -488,7 +504,7 @@ export default function EstoquePage() {
               </div>
 
               {productType === 'device' ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   <div>
                     <label className="block font-semibold text-slate-600 mb-1">
                       Capacidade
@@ -535,6 +551,18 @@ export default function EstoquePage() {
                       value={imei}
                       onChange={(e) => setImei(e.target.value)}
                       className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Quantidade
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-bold"
                     />
                   </div>
                 </div>
@@ -681,6 +709,26 @@ export default function EstoquePage() {
             </h3>
 
             <form onSubmit={handleSaveEditItem} className="space-y-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Origem (Planilha ou Loja)
+                </label>
+                <select
+                  value={editInvestmentId}
+                  onChange={(e) => setEditInvestmentId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-semibold"
+                >
+                  {hasRole('venda_loja') && (
+                    <option value="loja">🏪 Estoque Próprio da Loja</option>
+                  )}
+                  {visibleInvestments.map((inv) => (
+                    <option key={inv.id} value={inv.id}>
+                      📊 Planilha: {inv.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
                   Modalidade de Venda do Produto

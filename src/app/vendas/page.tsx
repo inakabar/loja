@@ -89,6 +89,7 @@ export default function VendasPage() {
     [availableItems, soldItemId]
   );
 
+  const [saleQuantity, setSaleQuantity] = useState<string>('1');
   const [customSalePrice, setCustomSalePrice] = useState<string>('');
   const [discount, setDiscount] = useState<string>('0');
   const [cashDownPayment, setCashDownPayment] = useState<string>('0');
@@ -127,10 +128,18 @@ export default function VendasPage() {
   const [newCustPhone, setNewCustPhone] = useState('55119');
   const [newCustCpf, setNewCustCpf] = useState('');
 
-  const effectiveSalePrice =
+  const maxAvailableQty = selectedProduct?.quantity || 1;
+  const effectiveQty = Math.max(
+    1,
+    Math.min(maxAvailableQty, Number(saleQuantity) || 1)
+  );
+
+  const unitSalePrice =
     customSalePrice !== ''
       ? Number(customSalePrice)
       : selectedProduct?.suggested_price || 0;
+
+  const effectiveSalePrice = Number((unitSalePrice * effectiveQty).toFixed(2));
 
   const netSalePrice = Math.max(
     0,
@@ -194,6 +203,7 @@ export default function VendasPage() {
     const created = createSaleWithTradeIn({
       customerId: customerId || '',
       soldItemId: selectedProduct.id,
+      quantitySold: effectiveQty,
       salePrice: effectiveSalePrice,
       discount: Number(discount) || 0,
       cashDownPayment: isCrediario
@@ -224,6 +234,7 @@ export default function VendasPage() {
     });
 
     setCompletedSale(created);
+    setSaleQuantity('1');
     setManualInstallmentStr('');
   };
 
@@ -350,6 +361,7 @@ export default function VendasPage() {
                   onChange={(e) => {
                     setSoldItemId(e.target.value);
                     setCustomSalePrice('');
+                    setSaleQuantity('1');
                   }}
                   required
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-semibold"
@@ -384,12 +396,25 @@ export default function VendasPage() {
 
             <div
               className={`grid gap-3 ${
-                isCrediario ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2'
+                isCrediario ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'
               }`}
             >
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  Valor Venda (R$)
+                  Qtd a Vender (Máx: {maxAvailableQty})
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={maxAvailableQty}
+                  value={saleQuantity}
+                  onChange={(e) => setSaleQuantity(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-bold text-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Valor Unitário (R$)
                 </label>
                 <input
                   type="number"
@@ -405,7 +430,7 @@ export default function VendasPage() {
               </div>
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  Desconto (R$)
+                  Desconto Total (R$)
                 </label>
                 <input
                   type="number"
@@ -573,9 +598,17 @@ export default function VendasPage() {
 
               <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
                 <div className="flex justify-between text-slate-400">
-                  <span>Valor do Produto:</span>
+                  <span>
+                    Subtotal ({effectiveQty}x {formatCurrencyBRL(unitSalePrice)}):
+                  </span>
                   <span className="text-white font-semibold">
                     {formatCurrencyBRL(effectiveSalePrice)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-[11px] text-slate-400">
+                  <span>Estoque restante após a venda:</span>
+                  <span className="text-slate-300 font-semibold">
+                    {Math.max(0, maxAvailableQty - effectiveQty)} de {maxAvailableQty} un.
                   </span>
                 </div>
                 {Number(discount) > 0 && (
