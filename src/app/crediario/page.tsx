@@ -14,7 +14,11 @@ import {
 } from 'lucide-react';
 import { useStore } from '@/lib/context/StoreContext';
 import { calculateCrediario } from '@/lib/calculators/crediario';
-import { formatCurrencyBRL } from '@/lib/calculators/spintax-whatsapp';
+import {
+  formatCPF,
+  formatCurrencyBRL,
+  isValidCPF,
+} from '@/lib/calculators/spintax-whatsapp';
 
 export default function CrediarioPage() {
   const {
@@ -27,6 +31,7 @@ export default function CrediarioPage() {
     hasRole,
     canAccessInvestment,
     addCustomer,
+    updateCustomer,
     createSaleWithTradeIn,
   } = useStore();
 
@@ -80,6 +85,7 @@ export default function CrediarioPage() {
   const [newCustName, setNewCustName] = useState('');
   const [newCustCpf, setNewCustCpf] = useState('');
   const [newCustPhone, setNewCustPhone] = useState('55119');
+  const [inlineCpfInput, setInlineCpfInput] = useState('');
 
   const [saleSuccessMessage, setSaleSuccessMessage] = useState<string | null>(
     null
@@ -174,9 +180,15 @@ export default function CrediarioPage() {
   const handleQuickCreateCustomer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustName.trim()) return;
+    if (!isValidCPF(newCustCpf)) {
+      alert(
+        'Para usar o cliente no Crediário é obrigatório informar um CPF válido de 11 dígitos.'
+      );
+      return;
+    }
     const created = addCustomer({
       name: newCustName.trim(),
-      cpf: newCustCpf.trim() || '000.000.000-00',
+      cpf: formatCPF(newCustCpf),
       phone_whatsapp: newCustPhone.trim(),
       whatsapp_opt_in: true,
       credit_score: 'bom',
@@ -188,15 +200,31 @@ export default function CrediarioPage() {
     setShowNewCustomerModal(false);
   };
 
+  const handleSaveInlineCustomerCpf = () => {
+    if (!selectedCustomer) return;
+    if (!isValidCPF(inlineCpfInput)) {
+      alert('CPF inválido! Verifique os 11 dígitos.');
+      return;
+    }
+    updateCustomer(selectedCustomer.id, { cpf: formatCPF(inlineCpfInput) });
+    setInlineCpfInput('');
+  };
+
   const handleCompleteCrediarioSale = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItem) {
       alert('Selecione um aparelho elegível ao crediário.');
       return;
     }
-    if (!effectiveCustomerId) {
+    if (!effectiveCustomerId || !selectedCustomer) {
       alert(
         'Selecione um cliente cadastrado (ou clique em + Novo Cliente) para gerar o contrato de Crediário.'
+      );
+      return;
+    }
+    if (!isValidCPF(selectedCustomer.cpf)) {
+      alert(
+        'O cliente selecionado ainda não possui um CPF válido cadastrado. Preencha o CPF do cliente logo abaixo do seletor antes de fechar o Crediário.'
       );
       return;
     }
@@ -367,15 +395,42 @@ export default function CrediarioPage() {
                 </select>
               </div>
 
-              {selectedCustomer && (
+              {selectedCustomer && isValidCPF(selectedCustomer.cpf) && (
                 <div className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 flex flex-wrap items-center justify-between gap-2">
                   <span>
                     Cliente: <strong>{selectedCustomer.name}</strong>
                   </span>
                   <span>
                     WhatsApp: <strong>{selectedCustomer.phone_whatsapp}</strong>{' '}
-                    • CPF: <strong>{selectedCustomer.cpf}</strong>
+                    • CPF Válido: <strong>{formatCPF(selectedCustomer.cpf)}</strong>
                   </span>
+                </div>
+              )}
+
+              {selectedCustomer && !isValidCPF(selectedCustomer.cpf) && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 space-y-2 text-[11px] text-rose-900">
+                  <div className="font-bold">
+                    ⚠️ O cliente <strong>{selectedCustomer.name}</strong> ainda não possui um CPF válido cadastrado (obrigatório para usar no Crediário).
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      maxLength={14}
+                      placeholder="Digite o CPF (000.000.000-00)"
+                      value={inlineCpfInput}
+                      onChange={(e) =>
+                        setInlineCpfInput(formatCPF(e.target.value))
+                      }
+                      className="px-3 py-1.5 rounded-lg border border-rose-400 bg-white font-mono font-bold text-slate-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveInlineCustomerCpf}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                    >
+                      Salvar CPF Válido no Cliente
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -879,13 +934,30 @@ export default function CrediarioPage() {
                 onChange={(e) => setNewCustName(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300"
               />
-              <input
-                type="text"
-                placeholder="CPF"
-                value={newCustCpf}
-                onChange={(e) => setNewCustCpf(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300"
-              />
+              <div>
+                <input
+                  type="text"
+                  required
+                  maxLength={14}
+                  placeholder="CPF Obrigatório p/ Crediário (000.000.000-00) *"
+                  value={newCustCpf}
+                  onChange={(e) => setNewCustCpf(formatCPF(e.target.value))}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono"
+                />
+                {newCustCpf.trim() && (
+                  <span
+                    className={`text-[10px] font-bold block mt-0.5 ${
+                      isValidCPF(newCustCpf)
+                        ? 'text-emerald-700'
+                        : 'text-rose-600'
+                    }`}
+                  >
+                    {isValidCPF(newCustCpf)
+                      ? '✓ CPF válido para Crediário'
+                      : '✗ CPF inválido'}
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 required

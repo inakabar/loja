@@ -16,6 +16,7 @@ import {
   WithdrawalReasonType,
 } from '@/types/domain';
 import { buildInitialSeed } from '@/lib/supabase/initial-seed';
+import { formatCPF, isValidCPF } from '@/lib/calculators/spintax-whatsapp';
 
 const STORAGE_KEY = 'primecell_erp_clean_v1';
 const AUTH_SESSION_KEY = 'primecell_auth_session_v1';
@@ -164,6 +165,10 @@ interface StoreContextType {
   }) => void;
   createWithdrawal: (input: CreateWithdrawalInput) => void;
   addCustomer: (input: Omit<Customer, 'id' | 'created_at'>) => Customer;
+  updateCustomer: (
+    customerId: string,
+    partial: Partial<Omit<Customer, 'id' | 'created_at'>>
+  ) => void;
   toggleCustomerOptIn: (customerId: string) => void;
   addInventoryItem: (
     input: Omit<InventoryItem, 'id' | 'created_at' | 'generation'> & {
@@ -641,14 +646,83 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addCustomer: StoreContextType['addCustomer'] = (input) => {
+    const cleanCpf = input.cpf?.trim() ? formatCPF(input.cpf) : '';
     const newCust: Customer = {
       ...input,
+      cpf: cleanCpf,
       id: `cust-${Date.now()}`,
       created_at: new Date().toISOString(),
     };
     setCustomers((prev) => [newCust, ...prev]);
     persistTableToApi('customers', newCust);
     return newCust;
+  };
+
+  const updateCustomer: StoreContextType['updateCustomer'] = (
+    customerId,
+    partial
+  ) => {
+    const formattedPartial = { ...partial };
+    if (typeof formattedPartial.cpf === 'string') {
+      formattedPartial.cpf = formattedPartial.cpf.trim()
+        ? formatCPF(formattedPartial.cpf)
+        : '';
+    }
+
+    setCustomers((prev) =>
+      prev.map((c) => {
+        if (c.id !== customerId) return c;
+        const updated: Customer = { ...c, ...formattedPartial };
+        persistTableToApi('customers', updated);
+        return updated;
+      })
+    );
+
+    if (formattedPartial.name || formattedPartial.phone_whatsapp) {
+      setSales((prev) =>
+        prev.map((s) => {
+          if (s.customer_id !== customerId) return s;
+          const updated = {
+            ...s,
+            customer_name: formattedPartial.name || s.customer_name,
+          };
+          persistTableToApi('sales', updated);
+          return updated;
+        })
+      );
+
+      setInstallments((prev) =>
+        prev.map((inst) => {
+          if (inst.customer_id !== customerId) return inst;
+          const updated = {
+            ...inst,
+            customer_name: formattedPartial.name || inst.customer_name,
+            customer_phone:
+              formattedPartial.phone_whatsapp || inst.customer_phone,
+          };
+          persistTableToApi('installments', updated);
+          return updated;
+        })
+      );
+
+      setServiceOrders((prev) =>
+        prev.map((so) => {
+          if (so.customer_id !== customerId) return so;
+          const updated = {
+            ...so,
+            customer_name: formattedPartial.name || so.customer_name,
+            customer_phone:
+              formattedPartial.phone_whatsapp || so.customer_phone,
+            customer_cpf:
+              typeof formattedPartial.cpf === 'string'
+                ? formattedPartial.cpf
+                : so.customer_cpf,
+          };
+          persistTableToApi('service_orders', updated);
+          return updated;
+        })
+      );
+    }
   };
 
   const toggleCustomerOptIn = (customerId: string) => {
@@ -757,6 +831,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
     if (input.paymentType === 'crediario' && !customer) {
       throw new Error('Selecione um cliente cadastrado para vendas no crediário.');
+    }
+    if (input.paymentType === 'crediario' && !isValidCPF(customer?.cpf)) {
+      throw new Error(
+        'Para vendas no Crediário é obrigatório que o cliente possua um CPF válido cadastrado.'
+      );
     }
 
     const customerIdVal = customer ? customer.id : null;
@@ -1544,6 +1623,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         addInvestment,
         createWithdrawal,
         addCustomer,
+        updateCustomer,
         toggleCustomerOptIn,
         addInventoryItem,
         updateInventoryItem,

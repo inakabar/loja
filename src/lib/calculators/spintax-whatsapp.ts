@@ -27,6 +27,47 @@ export function buildWhatsAppWebUrl(phone: string, text: string): string {
 }
 
 /**
+ * Formata automaticamente uma string de CPF no padrão 000.000.000-00
+ */
+export function formatCPF(value: string): string {
+  const digits = (value || '').replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) {
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  }
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
+}
+
+/**
+ * Valida se o CPF possui 11 dígitos válidos pelos dígitos verificadores oficiais.
+ */
+export function isValidCPF(value?: string | null): boolean {
+  if (!value) return false;
+  const digits = value.replace(/\D/g, '');
+  if (digits.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += Number(digits[i]) * (10 - i);
+  }
+  let rest = (sum * 10) % 11;
+  if (rest === 10 || rest === 11) rest = 0;
+  if (rest !== Number(digits[9])) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i++) {
+    sum += Number(digits[i]) * (11 - i);
+  }
+  rest = (sum * 10) % 11;
+  if (rest === 10 || rest === 11) rest = 0;
+  if (rest !== Number(digits[10])) return false;
+
+  return true;
+}
+
+/**
  * Sorteia um intervalo aleatório em segundos entre o mínimo (ex: 8s) e o máximo (ex: 120s).
  * Usa distribuição variada para simular perfeitamente o ritmo humano no WhatsApp.
  */

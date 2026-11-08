@@ -17,8 +17,10 @@ import {
 import { useStore } from '@/lib/context/StoreContext';
 import {
   buildWhatsAppWebUrl,
+  formatCPF,
   formatCurrencyBRL,
   formatDateBR,
+  isValidCPF,
 } from '@/lib/calculators/spintax-whatsapp';
 import { ServiceOrder, ServiceOrderPartUsage } from '@/types/domain';
 
@@ -194,9 +196,15 @@ export default function ManutencaoPage() {
   const handleQuickCreateCustomer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustName.trim()) return;
+    if (newCustCpf.trim() && !isValidCPF(newCustCpf)) {
+      alert(
+        'CPF inválido! Digite um CPF válido ou deixe em branco (obrigatório apenas para o Crediário).'
+      );
+      return;
+    }
     const created = addCustomer({
       name: newCustName.trim(),
-      cpf: newCustCpf.trim() || '000.000.000-00',
+      cpf: newCustCpf.trim() ? formatCPF(newCustCpf) : '',
       phone_whatsapp: newCustPhone.trim(),
       whatsapp_opt_in: true,
       credit_score: 'bom',
@@ -1352,10 +1360,11 @@ export default function ManutencaoPage() {
               />
               <input
                 type="text"
-                placeholder="CPF"
+                maxLength={14}
+                placeholder="CPF (Opcional • 000.000.000-00)"
                 value={newCustCpf}
-                onChange={(e) => setNewCustCpf(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300"
+                onChange={(e) => setNewCustCpf(formatCPF(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono"
               />
               <input
                 type="text"
