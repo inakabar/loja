@@ -150,6 +150,20 @@ export interface InventoryItem {
   created_at: string;
 }
 
+export interface SalePaymentBreakdown {
+  cash_received: number; // Quanto entrou fisicamente em dinheiro
+  change_cash: number; // Quanto saiu de troco em dinheiro
+  change_pix: number; // Quanto saiu de troco em PIX
+  cash_net: number; // Líquido em dinheiro (cash_received - change_cash - change_pix)
+  pix_amount: number; // Pago via PIX
+  credit_card_amount: number; // Pago no Cartão de Crédito
+  debit_card_amount: number; // Pago no Cartão de Débito
+  pending_amount: number; // Saldo que ficou pendente
+  original_pending_amount?: number; // Valor pendente original antes da quitação
+  pending_paid_at?: string | null;
+  pending_paid_method?: string | null;
+}
+
 export interface Sale {
   id: string;
   code: string;
@@ -173,6 +187,7 @@ export interface Sale {
   total_financed_with_interest: number;
   total_sale_final: number;
   payment_type: 'avista' | 'crediario' | 'cartao';
+  payment_breakdown?: SalePaymentBreakdown;
   notes?: string;
   created_at: string;
 }

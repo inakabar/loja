@@ -4,13 +4,15 @@ import { getAdminClient } from '@/lib/supabase/admin';
 import {
   buildInitialSeed,
   deserializeInventoryFromDb,
+  deserializeSaleFromDb,
   deserializeServiceOrderFromDb,
   deserializeUserFromDb,
   serializeInventoryForDb,
+  serializeSaleForDb,
   serializeServiceOrderForDb,
   serializeUserForDb,
 } from '@/lib/supabase/initial-seed';
-import { AppUser, InventoryItem, ServiceOrder } from '@/types/domain';
+import { AppUser, InventoryItem, Sale, ServiceOrder } from '@/types/domain';
 
 const ALLOWED_TABLES = new Set([
   'store_settings',
@@ -112,6 +114,9 @@ export async function GET() {
     const serviceOrdersParsed = (serviceOrders || []).map((row) =>
       deserializeServiceOrderFromDb(row as Record<string, unknown>)
     );
+    const salesParsed = (sales || []).map((row) =>
+      deserializeSaleFromDb(row as Record<string, unknown>)
+    );
 
     return NextResponse.json({
       connected: true,
@@ -121,7 +126,7 @@ export async function GET() {
       withdrawals: withdrawals || [],
       customers: customers || [],
       inventory: inventoryParsed,
-      sales: sales || [],
+      sales: salesParsed,
       installments: installments || [],
       serviceOrders: serviceOrdersParsed,
       collectionLogs: collectionLogs || [],
@@ -226,7 +231,11 @@ export async function POST(request: Request) {
           );
       }
       if (payload.sales?.length) {
-        await supabase.from('sales').upsert(payload.sales);
+        await supabase
+          .from('sales')
+          .upsert(
+            (payload.sales as Sale[]).map((s) => serializeSaleForDb(s))
+          );
       }
       if (payload.installments?.length) {
         await supabase.from('installments').upsert(payload.installments);
@@ -277,6 +286,10 @@ export async function POST(request: Request) {
       formattedData = Array.isArray(data)
         ? (data as ServiceOrder[]).map((so) => serializeServiceOrderForDb(so))
         : serializeServiceOrderForDb(data as ServiceOrder);
+    } else if (table === 'sales') {
+      formattedData = Array.isArray(data)
+        ? (data as Sale[]).map((s) => serializeSaleForDb(s))
+        : serializeSaleForDb(data as Sale);
     }
 
     const { error } = await supabase.from(table).upsert(formattedData);

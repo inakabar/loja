@@ -10,6 +10,7 @@ import {
   Investment,
   InvestmentWithdrawal,
   Sale,
+  SalePaymentBreakdown,
   ServiceOrder,
   StoreSettings,
   UserRole,
@@ -80,6 +81,7 @@ export interface CreateMultiItemSaleInput {
   discount: number;
   discountReason?: string;
   paymentType: 'avista' | 'cartao';
+  paymentBreakdown?: SalePaymentBreakdown;
   hasTradeIn?: boolean;
   tradeInBrand?: string;
   tradeInModel?: string;
@@ -191,6 +193,11 @@ interface StoreContextType {
   ) => void;
   createSaleWithTradeIn: (input: CreateCrediarioSaleInput) => Sale;
   createMultiItemSale: (input: CreateMultiItemSaleInput) => Sale;
+  settleSalePendingAmount: (input: {
+    saleId: string;
+    amountPaidNow: number;
+    paymentMethodLabel: string;
+  }) => void;
   payInstallment: (input: {
     installmentId: string;
     paidAmount: number;
@@ -1175,12 +1182,32 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     const discountVal = Number(input.discount) || 0;
     const netSalePrice = Math.max(0, grossSalePrice - discountVal);
-    const effectiveCashPaid = Math.max(
+    const totalDueAfterTradeIn = Math.max(
       0,
       Number((netSalePrice - tradeInAmount).toFixed(2))
     );
+
+    const pb = input.paymentBreakdown;
+    const actualPaidNow = pb
+      ? Math.max(
+          0,
+          Number(
+            (
+              (pb.cash_net || 0) +
+              (pb.pix_amount || 0) +
+              (pb.credit_card_amount || 0) +
+              (pb.debit_card_amount || 0)
+            ).toFixed(2)
+          )
+        )
+      : totalDueAfterTradeIn;
+
+    const pendingAmount = pb
+      ? Math.max(0, Number((pb.pending_amount || 0).toFixed(2)))
+      : 0;
+
     const totalSaleFinal = Number(
-      (effectiveCashPaid + tradeInAmount).toFixed(2)
+      (actualPaidNow + pendingAmount + tradeInAmount).toFixed(2)
     );
 
     const summarySoldName = resolvedItems
@@ -1210,19 +1237,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       sold_item_name: summarySoldName,
       sale_price: grossSalePrice,
       discount: discountVal,
-      cash_down_payment: effectiveCashPaid,
+      cash_down_payment: actualPaidNow,
       trade_in_item_id: tradeInItemId,
       trade_in_model: tradeInDisplayModel,
       trade_in_value: tradeInAmount,
-      financed_principal: 0,
+      financed_principal: pendingAmount,
       monthly_rate_percent: 0,
       installments_count: 0,
       suggested_installment_value: 0,
       final_installment_value: 0,
       is_manual_override: false,
-      total_financed_with_interest: 0,
+      total_financed_with_interest: pendingAmount,
       total_sale_final: totalSaleFinal,
       payment_type: input.paymentType,
+      payment_breakdown: pb
+        ? {
+            ...pb,
+            original_pending_amount: pendingAmount,
+          }
+        : undefined,
       notes: combinedNotes || undefined,
       created_at: new Date().toISOString(),
     };
@@ -1231,6 +1264,60 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     persistTableToApi('sales', newSale);
     return newSale;
   };
+
+  const settleSalePendingAmount: StoreContextType['settleSalePendingAmount'] =
+    ({ saleId, amountPaidNow, paymentMethodLabel }) => {
+      const nowIso = new Date().toISOString();
+      setSales((prev) =>
+        prev.map((s) => {
+          if (s.id !== saleId) return s;
+          const prevPending = Number(
+            s.payment_breakdown?.pending_amount ?? s.financed_principal ?? 0
+          );
+          const paidVal = Math.max(
+            0,
+            Math.min(prevPending, Number(amountPaidNow) || prevPending)
+          );
+          const nextPending = Math.max(
+            0,
+            Number((prevPending - paidVal).toFixed(2))
+          );
+
+          const updatedBreakdown: SalePaymentBreakdown = s.payment_breakdown
+            ? {
+                ...s.payment_breakdown,
+                pending_amount: nextPending,
+                pending_paid_at: nowIso,
+                pending_paid_method: paymentMethodLabel,
+              }
+            : {
+                cash_received: 0,
+                change_cash: 0,
+                change_pix: 0,
+                cash_net: 0,
+                pix_amount: 0,
+                credit_card_amount: 0,
+                debit_card_amount: 0,
+                pending_amount: nextPending,
+                original_pending_amount: prevPending,
+                pending_paid_at: nowIso,
+                pending_paid_method: paymentMethodLabel,
+              };
+
+          const updatedSale: Sale = {
+            ...s,
+            cash_down_payment: Number(
+              ((s.cash_down_payment || 0) + paidVal).toFixed(2)
+            ),
+            financed_principal: nextPending,
+            total_financed_with_interest: nextPending,
+            payment_breakdown: updatedBreakdown,
+          };
+          persistTableToApi('sales', updatedSale);
+          return updatedSale;
+        })
+      );
+    };
 
   const payInstallment: StoreContextType['payInstallment'] = ({
     installmentId,
@@ -1630,6 +1717,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         addPurchaseToInventoryItem,
         createSaleWithTradeIn,
         createMultiItemSale,
+        settleSalePendingAmount,
         payInstallment,
         markInstallmentLoss,
         addServiceOrder,

@@ -11,12 +11,16 @@ import {
   Lock,
   Tag,
   Smartphone,
+  ArrowLeft,
+  Send,
 } from 'lucide-react';
 import { useStore } from '@/lib/context/StoreContext';
 import { calculateCrediario } from '@/lib/calculators/crediario';
 import {
+  buildWhatsAppWebUrl,
   formatCPF,
   formatCurrencyBRL,
+  formatDateBR,
   isValidCPF,
 } from '@/lib/calculators/spintax-whatsapp';
 
@@ -86,6 +90,11 @@ export default function CrediarioPage() {
   const [newCustCpf, setNewCustCpf] = useState('');
   const [newCustPhone, setNewCustPhone] = useState('55119');
   const [inlineCpfInput, setInlineCpfInput] = useState('');
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [isSubmittingCrediario, setIsSubmittingCrediario] = useState(false);
+  const [whatsappTargetCustomerId, setWhatsappTargetCustomerId] =
+    useState<string>('');
+  const [whatsappCustomPhone, setWhatsappCustomPhone] = useState<string>('');
 
   const [saleSuccessMessage, setSaleSuccessMessage] = useState<string | null>(
     null
@@ -210,7 +219,7 @@ export default function CrediarioPage() {
     setInlineCpfInput('');
   };
 
-  const handleCompleteCrediarioSale = (e: React.FormEvent) => {
+  const handleOpenCrediarioSummary = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItem) {
       alert('Selecione um aparelho elegível ao crediário.');
@@ -234,6 +243,14 @@ export default function CrediarioPage() {
       );
       return;
     }
+    setWhatsappTargetCustomerId(effectiveCustomerId);
+    setWhatsappCustomPhone(selectedCustomer.phone_whatsapp || '');
+    setShowSummaryModal(true);
+  };
+
+  const executeFinalizeCrediario = (sendWhatsApp: boolean) => {
+    if (isSubmittingCrediario || !selectedItem || !selectedCustomer) return;
+    setIsSubmittingCrediario(true);
 
     try {
       const createdSale = createSaleWithTradeIn({
@@ -265,13 +282,62 @@ export default function CrediarioPage() {
             : undefined,
       });
 
-      setSaleSuccessMessage(
-        `Crediário ${createdSale.code} aprovado (${installmentsCount}x de ${formatCurrencyBRL(proposal.finalInstallmentValue)}) para ${createdSale.customer_name}!`
-      );
+      if (sendWhatsApp) {
+        const chosenCust =
+          customers.find((c) => c.id === whatsappTargetCustomerId) ||
+          selectedCustomer;
+        const phoneToSend =
+          whatsappCustomPhone.trim() || chosenCust.phone_whatsapp || '';
+        if (phoneToSend) {
+          const msg = [
+            `*RESUMO DO CONTRATO DE CREDIÁRIO ${createdSale.code} — ${settings.store_name}*`,
+            `Cliente: ${chosenCust.name} (CPF: ${formatCPF(chosenCust.cpf)})`,
+            `Aparelho: ${createdSale.sold_item_name}`,
+            `Valor Tabelado: ${formatCurrencyBRL(lockedStockPrice)}`,
+            discountVal > 0
+              ? `Desconto: -${formatCurrencyBRL(discountVal)} (${discountReason.trim()})`
+              : '',
+            `Entrada Paga: ${formatCurrencyBRL(cashDownVal)}`,
+            hasTradeIn && tradeInVal > 0
+              ? `Aparelho na Troca (${tradeInBrand} ${tradeInModel}): -${formatCurrencyBRL(tradeInVal)}`
+              : '',
+            `*Parcelamento: ${installmentsCount}x de ${formatCurrencyBRL(proposal.finalInstallmentValue)}*`,
+            `1º Vencimento: ${formatDateBR(firstDueDate)}`,
+            `Total Final do Contrato: *${formatCurrencyBRL(proposal.totalSaleFinal)}*`,
+          ]
+            .filter(Boolean)
+            .join('\n');
+          window.open(
+            buildWhatsAppWebUrl(phoneToSend, msg),
+            '_blank',
+            'noopener,noreferrer'
+          );
+        }
+      }
+
+      // Limpa todos os dados da tela após finalizar
+      setSelectedItemId('');
+      setProductSearch('');
+      setQuantitySoldStr('1');
       setDiscountStr('0');
       setDiscountReason('');
+      setCashDownStr('0');
+      setHasTradeIn(false);
+      setTradeInModel('');
+      setTradeInImei('');
+      setTradeInValueStr('0');
+      setTradeInResaleStr('0');
+      setTradeInNeedsRepair(false);
+      setManualInstallmentStr('');
+      setShowSummaryModal(false);
+      setIsSubmittingCrediario(false);
+
+      setSaleSuccessMessage(
+        `Crediário ${createdSale.code} aprovado (${installmentsCount}x de ${formatCurrencyBRL(proposal.finalInstallmentValue)}) para ${createdSale.customer_name}! Formulário limpo.`
+      );
       setTimeout(() => setSaleSuccessMessage(null), 6000);
     } catch (err) {
+      setIsSubmittingCrediario(false);
       alert(err instanceof Error ? err.message : 'Erro ao fechar crediário');
     }
   };
@@ -302,7 +368,7 @@ export default function CrediarioPage() {
       )}
 
       <form
-        onSubmit={handleCompleteCrediarioSale}
+        onSubmit={handleOpenCrediarioSummary}
         className="grid grid-cols-1 lg:grid-cols-12 gap-4"
       >
         {/* Coluna Esquerda: Origem, Cliente, Aparelho Detalhado e Trade-In */}
@@ -845,12 +911,132 @@ export default function CrediarioPage() {
               disabled={!selectedItem}
               className="w-full py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 text-slate-950 font-black text-xs transition-colors cursor-pointer"
             >
-              Fechar Crediário ({installmentsCount}x de{' '}
-              {formatCurrencyBRL(proposal.finalInstallmentValue)})
+              Gerar Resumo do Crediário ({installmentsCount}x de{' '}
+              {formatCurrencyBRL(proposal.finalInstallmentValue)}) →
             </button>
           </div>
         </div>
       </form>
+
+      {/* Pop-up de Resumo do Crediário com 3 Botões */}
+      {showSummaryModal && selectedItem && selectedCustomer && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-xl w-full p-5 space-y-4 shadow-2xl text-xs">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  Resumo do Contrato de Crediário
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Cliente: <strong>{selectedCustomer.name}</strong> (CPF:{' '}
+                  {formatCPF(selectedCustomer.cpf)})
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800 font-bold text-[11px]">
+                {installmentsCount}x de{' '}
+                {formatCurrencyBRL(proposal.finalInstallmentValue)}
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Aparelho:</span>
+                <strong className="text-slate-900">
+                  {effectiveQtySold}x {selectedItem.brand} {selectedItem.model}{' '}
+                  ({selectedItem.storage} • {selectedItem.color})
+                </strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Valor Tabelado:</span>
+                <strong>{formatCurrencyBRL(lockedStockPrice)}</strong>
+              </div>
+              {discountVal > 0 && (
+                <div className="flex justify-between text-amber-700">
+                  <span>Desconto ({discountReason}):</span>
+                  <strong>-{formatCurrencyBRL(discountVal)}</strong>
+                </div>
+              )}
+              <div className="flex justify-between text-emerald-700">
+                <span>Entrada em Dinheiro/PIX:</span>
+                <strong>-{formatCurrencyBRL(cashDownVal)}</strong>
+              </div>
+              {hasTradeIn && tradeInVal > 0 && (
+                <div className="flex justify-between text-indigo-700">
+                  <span>
+                    Aparelho na Troca ({tradeInBrand} {tradeInModel}):
+                  </span>
+                  <strong>-{formatCurrencyBRL(tradeInVal)}</strong>
+                </div>
+              )}
+              <div className="flex justify-between pt-1.5 border-t border-slate-200 font-black text-slate-900 text-sm">
+                <span>Total Final do Contrato:</span>
+                <span>{formatCurrencyBRL(proposal.totalSaleFinal)}</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 space-y-1.5">
+              <label className="block font-bold text-emerald-950">
+                Cliente / WhatsApp para Envio do Resumo:
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <select
+                  value={whatsappTargetCustomerId}
+                  onChange={(e) => {
+                    setWhatsappTargetCustomerId(e.target.value);
+                    const found = customers.find(
+                      (c) => c.id === e.target.value
+                    );
+                    if (found) setWhatsappCustomPhone(found.phone_whatsapp);
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-white font-semibold"
+                >
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.phone_whatsapp})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={whatsappCustomPhone}
+                  onChange={(e) => setWhatsappCustomPhone(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-emerald-300 bg-white font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isSubmittingCrediario}
+                onClick={() => setShowSummaryModal(false)}
+                className="py-2.5 px-3 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Revisar</span>
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingCrediario}
+                onClick={() => executeFinalizeCrediario(false)}
+                className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Finalizar (Só Registrar)</span>
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingCrediario}
+                onClick={() => executeFinalizeCrediario(true)}
+                className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Enviar p/ Cliente</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tabela de Contratos de Crediário Registrados */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">

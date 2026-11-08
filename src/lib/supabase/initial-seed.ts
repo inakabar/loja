@@ -15,6 +15,7 @@ const USER_PREFIX = '__usr__:';
 const PWD_PREFIX = '__pwd__:';
 const INV_META_MARKER = ' ||META_INV:';
 const OS_META_MARKER = ' ||META_OS:';
+const SALE_META_MARKER = ' ||META_SALE:';
 
 export function serializeUserForDb(user: AppUser) {
   const cleanInvs = (user.allowed_investment_ids || []).filter(
@@ -265,6 +266,82 @@ export function deserializeServiceOrderFromDb(
     warranty_days: Number(row.warranty_days || 90),
     created_at: String(row.created_at || new Date().toISOString()),
     completed_at: (row.completed_at as string | null) || null,
+  };
+}
+
+export function serializeSaleForDb(sale: Sale) {
+  const cleanNotes = (sale.notes || '').split(SALE_META_MARKER)[0];
+  const encodedNotes = sale.payment_breakdown
+    ? `${cleanNotes}${SALE_META_MARKER}${JSON.stringify(sale.payment_breakdown)}`
+    : cleanNotes || null;
+
+  return {
+    id: sale.id,
+    code: sale.code,
+    customer_id: sale.customer_id || null,
+    customer_name: sale.customer_name,
+    investment_id: sale.investment_id,
+    sold_item_id: sale.sold_item_id,
+    sold_item_name: sale.sold_item_name,
+    sale_price: sale.sale_price || 0,
+    discount: sale.discount || 0,
+    cash_down_payment: sale.cash_down_payment || 0,
+    trade_in_item_id: sale.trade_in_item_id || null,
+    trade_in_model: sale.trade_in_model || null,
+    trade_in_value: sale.trade_in_value || 0,
+    financed_principal: sale.financed_principal || 0,
+    monthly_rate_percent: sale.monthly_rate_percent || 0,
+    installments_count: sale.installments_count || 0,
+    suggested_installment_value: sale.suggested_installment_value || 0,
+    final_installment_value: sale.final_installment_value || 0,
+    is_manual_override: Boolean(sale.is_manual_override),
+    total_financed_with_interest: sale.total_financed_with_interest || 0,
+    total_sale_final: sale.total_sale_final || 0,
+    payment_type: sale.payment_type,
+    notes: encodedNotes,
+    created_at: sale.created_at,
+  };
+}
+
+export function deserializeSaleFromDb(row: Record<string, unknown>): Sale {
+  const rawNotes = String(row.notes || '');
+  const [cleanNotes, metaJson] = rawNotes.split(SALE_META_MARKER);
+  let payment_breakdown: Sale['payment_breakdown'] = undefined;
+
+  if (metaJson) {
+    try {
+      payment_breakdown = JSON.parse(metaJson);
+    } catch {
+      // ignore
+    }
+  }
+
+  return {
+    id: String(row.id),
+    code: String(row.code),
+    customer_id: (row.customer_id as string | null) || null,
+    customer_name: String(row.customer_name || ''),
+    investment_id: String(row.investment_id || 'loja'),
+    sold_item_id: String(row.sold_item_id || ''),
+    sold_item_name: String(row.sold_item_name || ''),
+    sale_price: Number(row.sale_price || 0),
+    discount: Number(row.discount || 0),
+    cash_down_payment: Number(row.cash_down_payment || 0),
+    trade_in_item_id: (row.trade_in_item_id as string | null) || null,
+    trade_in_model: (row.trade_in_model as string | null) || null,
+    trade_in_value: Number(row.trade_in_value || 0),
+    financed_principal: Number(row.financed_principal || 0),
+    monthly_rate_percent: Number(row.monthly_rate_percent || 0),
+    installments_count: Number(row.installments_count || 0),
+    suggested_installment_value: Number(row.suggested_installment_value || 0),
+    final_installment_value: Number(row.final_installment_value || 0),
+    is_manual_override: Boolean(row.is_manual_override),
+    total_financed_with_interest: Number(row.total_financed_with_interest || 0),
+    total_sale_final: Number(row.total_sale_final || 0),
+    payment_type: (row.payment_type as Sale['payment_type']) || 'avista',
+    payment_breakdown,
+    notes: cleanNotes || undefined,
+    created_at: String(row.created_at || new Date().toISOString()),
   };
 }
 
