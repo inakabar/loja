@@ -44,6 +44,22 @@ async function persistTableToApi(table: string, data: unknown) {
   }
 }
 
+async function deleteRowFromApi(table: string, idOrIds: string | string[]) {
+  try {
+    await fetch('/api/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(
+        Array.isArray(idOrIds)
+          ? { action: 'delete_row', table, ids: idOrIds }
+          : { action: 'delete_row', table, id: idOrIds }
+      ),
+    });
+  } catch (err) {
+    console.error(`Erro ao excluir registro da tabela ${table}:`, err);
+  }
+}
+
 export interface CreateCrediarioSaleInput {
   customerId: string;
   soldItemId: string;
@@ -165,12 +181,23 @@ interface StoreContextType {
     allowed_user_ids?: string[];
     notes?: string;
   }) => void;
+  updateInvestment: (
+    investmentId: string,
+    partial: Partial<Omit<Investment, 'id' | 'created_at'>>
+  ) => void;
+  deleteInvestment: (investmentId: string) => void;
   createWithdrawal: (input: CreateWithdrawalInput) => void;
+  updateWithdrawal: (
+    withdrawalId: string,
+    partial: Partial<Omit<InvestmentWithdrawal, 'id' | 'created_at'>>
+  ) => void;
+  deleteWithdrawal: (withdrawalId: string) => void;
   addCustomer: (input: Omit<Customer, 'id' | 'created_at'>) => Customer;
   updateCustomer: (
     customerId: string,
     partial: Partial<Omit<Customer, 'id' | 'created_at'>>
   ) => void;
+  deleteCustomer: (customerId: string) => void;
   toggleCustomerOptIn: (customerId: string) => void;
   addInventoryItem: (
     input: Omit<InventoryItem, 'id' | 'created_at' | 'generation'> & {
@@ -181,6 +208,7 @@ interface StoreContextType {
     itemId: string,
     partial: Partial<InventoryItem>
   ) => void;
+  deleteInventoryItem: (itemId: string) => void;
   addPurchaseToInventoryItem: (
     itemId: string,
     entry: {
@@ -191,8 +219,28 @@ interface StoreContextType {
       suggested_price?: number;
     }
   ) => void;
+  updatePurchaseInInventoryItem: (
+    itemId: string,
+    purchaseId: string,
+    partial: {
+      quantity: number;
+      unit_cost: number;
+      extra_cost?: number;
+      supplier_or_notes?: string;
+    }
+  ) => void;
+  deletePurchaseFromInventoryItem: (
+    itemId: string,
+    purchaseId: string,
+    deductFromStock?: boolean
+  ) => void;
   createSaleWithTradeIn: (input: CreateCrediarioSaleInput) => Sale;
   createMultiItemSale: (input: CreateMultiItemSaleInput) => Sale;
+  updateSale: (saleId: string, partial: Partial<Sale>) => void;
+  deleteSale: (
+    saleId: string,
+    options?: { restoreStock?: boolean }
+  ) => void;
   settleSalePendingAmount: (input: {
     saleId: string;
     amountPaidNow: number;
@@ -206,9 +254,19 @@ interface StoreContextType {
     discountApplied?: number;
   }) => void;
   markInstallmentLoss: (installmentId: string) => void;
+  updateInstallment: (
+    installmentId: string,
+    partial: Partial<Installment>
+  ) => void;
+  deleteInstallment: (installmentId: string) => void;
   addServiceOrder: (
     input: Omit<ServiceOrder, 'id' | 'code' | 'created_at'>
   ) => void;
+  updateServiceOrder: (
+    id: string,
+    partial: Partial<Omit<ServiceOrder, 'id' | 'code' | 'created_at'>>
+  ) => void;
+  deleteServiceOrder: (id: string) => void;
   updateServiceOrderStatus: (
     id: string,
     status: ServiceOrder['status']
@@ -575,6 +633,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     persistTableToApi('investments', newInv);
   };
 
+  const updateInvestment: StoreContextType['updateInvestment'] = (
+    investmentId,
+    partial
+  ) => {
+    setInvestments((prev) =>
+      prev.map((inv) => {
+        if (inv.id !== investmentId) return inv;
+        const updated: Investment = { ...inv, ...partial };
+        persistTableToApi('investments', updated);
+        return updated;
+      })
+    );
+  };
+
+  const deleteInvestment: StoreContextType['deleteInvestment'] = (
+    investmentId
+  ) => {
+    setInvestments((prev) => prev.filter((inv) => inv.id !== investmentId));
+    deleteRowFromApi('investments', investmentId);
+  };
+
   const createWithdrawal: StoreContextType['createWithdrawal'] = (input) => {
     const sourceInv = investments.find((i) => i.id === input.investmentId);
     if (!sourceInv) return;
@@ -650,6 +729,43 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
     setWithdrawals((prev) => [newWithdrawal, ...prev]);
     persistTableToApi('investment_withdrawals', newWithdrawal);
+  };
+
+  const updateWithdrawal: StoreContextType['updateWithdrawal'] = (
+    withdrawalId,
+    partial
+  ) => {
+    setWithdrawals((prev) =>
+      prev.map((w) => {
+        if (w.id !== withdrawalId) return w;
+        const updated: InvestmentWithdrawal = { ...w, ...partial };
+        persistTableToApi('investment_withdrawals', updated);
+        return updated;
+      })
+    );
+  };
+
+  const deleteWithdrawal: StoreContextType['deleteWithdrawal'] = (
+    withdrawalId
+  ) => {
+    const target = withdrawals.find((w) => w.id === withdrawalId);
+    if (target && target.asset_type === 'device' && target.inventory_item_id) {
+      setInventory((prev) =>
+        prev.map((item) => {
+          if (item.id !== target.inventory_item_id) return item;
+          const updated: InventoryItem = {
+            ...item,
+            investment_id: target.investment_id,
+            status: 'in_stock',
+            quantity: Math.max(1, item.quantity || 1),
+          };
+          persistTableToApi('inventory_items', updated);
+          return updated;
+        })
+      );
+    }
+    setWithdrawals((prev) => prev.filter((w) => w.id !== withdrawalId));
+    deleteRowFromApi('investment_withdrawals', withdrawalId);
   };
 
   const addCustomer: StoreContextType['addCustomer'] = (input) => {
@@ -730,6 +846,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         })
       );
     }
+  };
+
+  const deleteCustomer: StoreContextType['deleteCustomer'] = (customerId) => {
+    setCustomers((prev) => prev.filter((c) => c.id !== customerId));
+    deleteRowFromApi('customers', customerId);
   };
 
   const toggleCustomerOptIn = (customerId: string) => {
@@ -820,6 +941,93 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
                 : item.suggested_price,
             status: 'in_stock',
             purchase_history: [newEntry, ...prevHistory],
+          };
+          persistTableToApi('inventory_items', updated);
+          return updated;
+        })
+      );
+    };
+
+  const deleteInventoryItem: StoreContextType['deleteInventoryItem'] = (
+    itemId
+  ) => {
+    setInventory((prev) => prev.filter((item) => item.id !== itemId));
+    deleteRowFromApi('inventory_items', itemId);
+  };
+
+  const updatePurchaseInInventoryItem: StoreContextType['updatePurchaseInInventoryItem'] =
+    (itemId, purchaseId, partial) => {
+      setInventory((prev) =>
+        prev.map((item) => {
+          if (item.id !== itemId) return item;
+          const prevHistory = item.purchase_history || [];
+          const oldEntry = prevHistory.find((p) => p.id === purchaseId);
+          if (!oldEntry) return item;
+
+          const newQty = Math.max(1, Number(partial.quantity) || 1);
+          const qtyDiff = newQty - (Number(oldEntry.quantity) || 0);
+          const newUnitCost = Math.max(0, Number(partial.unit_cost) || 0);
+          const newExtraCost = Math.max(0, Number(partial.extra_cost) || 0);
+          const extraDiff = newExtraCost - (Number(oldEntry.extra_cost) || 0);
+
+          const updatedHistory = prevHistory.map((p) =>
+            p.id === purchaseId
+              ? {
+                  ...p,
+                  quantity: newQty,
+                  unit_cost: newUnitCost,
+                  extra_cost: newExtraCost,
+                  supplier_or_notes:
+                    partial.supplier_or_notes !== undefined
+                      ? partial.supplier_or_notes
+                      : p.supplier_or_notes,
+                }
+              : p
+          );
+
+          const nextItemQty = Math.max(0, (item.quantity || 0) + qtyDiff);
+          const updated: InventoryItem = {
+            ...item,
+            quantity: nextItemQty,
+            purchase_cost: newUnitCost > 0 ? newUnitCost : item.purchase_cost,
+            repair_cost: Math.max(0, (item.repair_cost || 0) + extraDiff),
+            status: nextItemQty > 0 ? 'in_stock' : item.status,
+            purchase_history: updatedHistory,
+          };
+          persistTableToApi('inventory_items', updated);
+          return updated;
+        })
+      );
+    };
+
+  const deletePurchaseFromInventoryItem: StoreContextType['deletePurchaseFromInventoryItem'] =
+    (itemId, purchaseId, deductFromStock = true) => {
+      setInventory((prev) =>
+        prev.map((item) => {
+          if (item.id !== itemId) return item;
+          const prevHistory = item.purchase_history || [];
+          const oldEntry = prevHistory.find((p) => p.id === purchaseId);
+          if (!oldEntry) return item;
+
+          const updatedHistory = prevHistory.filter((p) => p.id !== purchaseId);
+          const nextQty = deductFromStock
+            ? Math.max(
+                0,
+                (item.quantity || 0) - (Number(oldEntry.quantity) || 0)
+              )
+            : item.quantity;
+          const nextRepairCost = deductFromStock
+            ? Math.max(
+                0,
+                (item.repair_cost || 0) - (Number(oldEntry.extra_cost) || 0)
+              )
+            : item.repair_cost;
+
+          const updated: InventoryItem = {
+            ...item,
+            quantity: nextQty,
+            repair_cost: nextRepairCost,
+            purchase_history: updatedHistory,
           };
           persistTableToApi('inventory_items', updated);
           return updated;
@@ -1265,6 +1473,79 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return newSale;
   };
 
+  const updateSale: StoreContextType['updateSale'] = (saleId, partial) => {
+    setSales((prev) =>
+      prev.map((s) => {
+        if (s.id !== saleId) return s;
+        const updated: Sale = { ...s, ...partial };
+        persistTableToApi('sales', updated);
+        return updated;
+      })
+    );
+  };
+
+  const deleteSale: StoreContextType['deleteSale'] = (
+    saleId,
+    options = { restoreStock: true }
+  ) => {
+    const targetSale = sales.find((s) => s.id === saleId);
+    if (!targetSale) return;
+
+    // 1. Remove parcelas associadas a esta venda
+    const relatedInstIds = installments
+      .filter((inst) => inst.sale_id === saleId)
+      .map((inst) => inst.id);
+    if (relatedInstIds.length > 0) {
+      setInstallments((prev) =>
+        prev.filter((inst) => inst.sale_id !== saleId)
+      );
+      deleteRowFromApi('installments', relatedInstIds);
+    }
+
+    // 2. Opcionalmente devolve o item vendido ao estoque e remove aparelho/OS de troca gerado na venda
+    if (options.restoreStock !== false) {
+      const tradeInId = targetSale.trade_in_item_id;
+      if (tradeInId) {
+        const relatedOsIds = serviceOrders
+          .filter((so) => so.inventory_item_id === tradeInId)
+          .map((so) => so.id);
+        if (relatedOsIds.length > 0) {
+          setServiceOrders((prev) =>
+            prev.filter((so) => so.inventory_item_id !== tradeInId)
+          );
+          deleteRowFromApi('service_orders', relatedOsIds);
+        }
+        deleteRowFromApi('inventory_items', tradeInId);
+      }
+
+      const qtyMatch = targetSale.sold_item_name.match(/^(\d+)x\s/);
+      const qtyToRestore = qtyMatch ? Math.max(1, Number(qtyMatch[1])) : 1;
+
+      setInventory((prev) =>
+        prev
+          .filter(
+            (item) =>
+              item.id !== tradeInId && item.origin_sale_id !== saleId
+          )
+          .map((item) => {
+            if (item.id !== targetSale.sold_item_id) return item;
+            const nextQty = (item.quantity || 0) + qtyToRestore;
+            const updatedItem: InventoryItem = {
+              ...item,
+              quantity: nextQty,
+              status: 'in_stock',
+            };
+            persistTableToApi('inventory_items', updatedItem);
+            return updatedItem;
+          })
+      );
+    }
+
+    // 3. Remove a venda
+    setSales((prev) => prev.filter((s) => s.id !== saleId));
+    deleteRowFromApi('sales', saleId);
+  };
+
   const settleSalePendingAmount: StoreContextType['settleSalePendingAmount'] =
     ({ saleId, amountPaidNow, paymentMethodLabel }) => {
       const nowIso = new Date().toISOString();
@@ -1354,6 +1635,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return updated;
       })
     );
+  };
+
+  const updateInstallment: StoreContextType['updateInstallment'] = (
+    installmentId,
+    partial
+  ) => {
+    setInstallments((prev) =>
+      prev.map((inst) => {
+        if (inst.id !== installmentId) return inst;
+        const updated: Installment = { ...inst, ...partial };
+        persistTableToApi('installments', updated);
+        return updated;
+      })
+    );
+  };
+
+  const deleteInstallment: StoreContextType['deleteInstallment'] = (
+    installmentId
+  ) => {
+    setInstallments((prev) => prev.filter((inst) => inst.id !== installmentId));
+    deleteRowFromApi('installments', installmentId);
   };
 
   const addServiceOrder: StoreContextType['addServiceOrder'] = (input) => {
@@ -1591,6 +1893,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+  const updateServiceOrder: StoreContextType['updateServiceOrder'] = (
+    id,
+    partial
+  ) => {
+    setServiceOrders((prev) =>
+      prev.map((so) => {
+        if (so.id !== id) return so;
+        const completedAt =
+          partial.status === 'pronto' || partial.status === 'entregue'
+            ? so.completed_at || new Date().toISOString()
+            : so.completed_at;
+        const updated: ServiceOrder = {
+          ...so,
+          ...partial,
+          completed_at: completedAt,
+        };
+        persistTableToApi('service_orders', updated);
+        return updated;
+      })
+    );
+  };
+
+  const deleteServiceOrder: StoreContextType['deleteServiceOrder'] = (id) => {
+    setServiceOrders((prev) => prev.filter((so) => so.id !== id));
+    deleteRowFromApi('service_orders', id);
+  };
+
   const recordCollectionSent: StoreContextType['recordCollectionSent'] = (
     input
   ) => {
@@ -1708,19 +2037,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         deleteUser,
         toggleUserAccessOnInvestment,
         addInvestment,
+        updateInvestment,
+        deleteInvestment,
         createWithdrawal,
+        updateWithdrawal,
+        deleteWithdrawal,
         addCustomer,
         updateCustomer,
+        deleteCustomer,
         toggleCustomerOptIn,
         addInventoryItem,
         updateInventoryItem,
+        deleteInventoryItem,
         addPurchaseToInventoryItem,
+        updatePurchaseInInventoryItem,
+        deletePurchaseFromInventoryItem,
         createSaleWithTradeIn,
         createMultiItemSale,
+        updateSale,
+        deleteSale,
         settleSalePendingAmount,
         payInstallment,
         markInstallmentLoss,
+        updateInstallment,
+        deleteInstallment,
         addServiceOrder,
+        updateServiceOrder,
+        deleteServiceOrder,
         updateServiceOrderStatus,
         confirmServiceOrderPartPurchase,
         recordCollectionSent,

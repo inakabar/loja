@@ -10,11 +10,15 @@ import {
   PackagePlus,
   History,
   Search,
+  Trash2,
+  Pencil,
+  AlertTriangle,
 } from 'lucide-react';
 import { useStore } from '@/lib/context/StoreContext';
 import { formatCurrencyBRL } from '@/lib/calculators/spintax-whatsapp';
 import {
   InventoryItem,
+  PurchaseHistoryEntry,
   PRODUCT_SUBCATEGORY_LABELS,
   ProductSubcategory,
 } from '@/types/domain';
@@ -28,8 +32,13 @@ export default function EstoquePage() {
     canAccessInvestment,
     addInventoryItem,
     updateInventoryItem,
+    deleteInventoryItem,
     addPurchaseToInventoryItem,
+    updatePurchaseInInventoryItem,
+    deletePurchaseFromInventoryItem,
   } = useStore();
+
+  const isAdmin = hasRole('admin');
 
   const [filterInvId, setFilterInvId] = useState<string>('all');
   const [filterGroup, setFilterGroup] = useState<
@@ -75,6 +84,12 @@ export default function EstoquePage() {
 
   // Modal Editar Produto / Lançar Custos de Manutenção/Peças
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [editBrand, setEditBrand] = useState('');
+  const [editModel, setEditModel] = useState('');
+  const [editStorage, setEditStorage] = useState('');
+  const [editColor, setEditColor] = useState('');
+  const [editImei, setEditImei] = useState('');
+  const [editBattery, setEditBattery] = useState('100');
   const [editInvestmentId, setEditInvestmentId] = useState<string>('loja');
   const [editCategory, setEditCategory] = useState<
     'device' | 'accessory' | 'part'
@@ -87,6 +102,22 @@ export default function EstoquePage() {
   const [editSuggestedPrice, setEditSuggestedPrice] = useState('0');
   const [editQuantity, setEditQuantity] = useState('1');
   const [editNotes, setEditNotes] = useState('');
+
+  // Modal Excluir Produto (Admin)
+  const [deletingItem, setDeletingItem] = useState<InventoryItem | null>(null);
+
+  // Edição de Compra/Lote Individual no Histórico do Produto (Admin)
+  const [editingPurchase, setEditingPurchase] =
+    useState<PurchaseHistoryEntry | null>(null);
+  const [editPhQty, setEditPhQty] = useState('1');
+  const [editPhUnitCost, setEditPhUnitCost] = useState('0');
+  const [editPhExtraCost, setEditPhExtraCost] = useState('0');
+  const [editPhNotes, setEditPhNotes] = useState('');
+
+  // Mantém o purchasingItem sincronizado com o estado global do inventory
+  const activePurchasingItem = purchasingItem
+    ? inventory.find((i) => i.id === purchasingItem.id) || purchasingItem
+    : null;
 
   const getEffectiveSubcategory = (item: InventoryItem): ProductSubcategory => {
     if (item.subcategory) return item.subcategory;
@@ -259,6 +290,12 @@ export default function EstoquePage() {
 
   const handleOpenEditModal = (item: InventoryItem) => {
     setEditingItem(item);
+    setEditBrand(item.brand || '');
+    setEditModel(item.model || '');
+    setEditStorage(item.storage || '');
+    setEditColor(item.color || '');
+    setEditImei(item.imei || '');
+    setEditBattery(String(item.battery_health ?? 100));
     setEditInvestmentId(item.investment_id || 'loja');
     setEditCategory(item.category);
     setEditSubcategory(getEffectiveSubcategory(item));
@@ -266,7 +303,7 @@ export default function EstoquePage() {
     setEditRepairCost(String(item.repair_cost || 0));
     setEditAddExtraCost('0');
     setEditSuggestedPrice(String(item.suggested_price || 0));
-    setEditQuantity(String(item.quantity || 1));
+    setEditQuantity(String(item.quantity ?? 0));
     setEditNotes(item.notes || '');
   };
 
@@ -277,6 +314,13 @@ export default function EstoquePage() {
       (Number(editRepairCost) || 0) + (Number(editAddExtraCost) || 0);
 
     updateInventoryItem(editingItem.id, {
+      brand: editBrand.trim() || editingItem.brand,
+      model: editModel.trim() || editingItem.model,
+      storage: editCategory === 'device' ? editStorage.trim() : '',
+      color: editColor.trim(),
+      imei: editCategory === 'device' ? editImei.trim() : '',
+      battery_health:
+        editCategory === 'device' ? Number(editBattery) || 100 : undefined,
       investment_id: editInvestmentId,
       category: editCategory,
       subcategory: editSubcategory,
@@ -555,6 +599,17 @@ export default function EstoquePage() {
                             <Wrench className="w-3 h-3 text-amber-600" />
                             <span>Editar</span>
                           </button>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => setDeletingItem(item)}
+                              title="Excluir Produto do Estoque (Admin)"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 text-[11px] font-semibold cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-600" />
+                              <span>Excluir</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -567,7 +622,7 @@ export default function EstoquePage() {
       </div>
 
       {/* Modal: Inserir Nova Compra Associada ao Produto & Ver Histórico de Compras */}
-      {purchasingItem && (
+      {activePurchasingItem && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-5 space-y-4 shadow-xl text-xs max-h-[92vh] overflow-y-auto">
             <div className="flex items-start justify-between border-b border-slate-200 pb-2.5">
@@ -575,12 +630,12 @@ export default function EstoquePage() {
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                   <PackagePlus className="w-4 h-4 text-emerald-600" />
                   <span>
-                    Inserir Compra Associada — {purchasingItem.brand}{' '}
-                    {purchasingItem.model}
+                    Inserir Compra Associada — {activePurchasingItem.brand}{' '}
+                    {activePurchasingItem.model}
                   </span>
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Saldo atual: <strong>{purchasingItem.quantity} un.</strong> •
+                  Saldo atual: <strong>{activePurchasingItem.quantity} un.</strong> •
                   Some novas unidades compradas e mantenha o histórico de compras deste produto.
                 </p>
               </div>
@@ -657,7 +712,7 @@ export default function EstoquePage() {
                 <span>
                   Novo saldo após esta compra:{' '}
                   <strong className="text-emerald-700">
-                    {(purchasingItem.quantity || 0) +
+                    {(activePurchasingItem.quantity || 0) +
                       Math.max(1, Number(buyQty) || 1)}{' '}
                     unidades
                   </strong>
@@ -680,16 +735,99 @@ export default function EstoquePage() {
                   <History className="w-3.5 h-3.5 text-slate-500" />
                   <span>
                     Histórico de Compras Associadas a Este Produto (
-                    {purchasingItem.purchase_history?.length || 0})
+                    {activePurchasingItem.purchase_history?.length || 0})
                   </span>
                 </div>
-                {purchasingItem.purchase_history &&
-                purchasingItem.purchase_history.length > 0 ? (
-                  <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
-                    {purchasingItem.purchase_history.map((ph) => (
+
+                {/* Formulário Inline de Edição de Compra do Histórico (Admin) */}
+                {isAdmin && editingPurchase && (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 space-y-2">
+                    <div className="font-bold text-amber-950 text-[11px]">
+                      ✏️ Editando Registro de Compra ({new Date(editingPurchase.date).toLocaleDateString('pt-BR')})
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                          Qtd Comprada
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editPhQty}
+                          onChange={(e) => setEditPhQty(e.target.value)}
+                          className="w-full px-2 py-1 rounded border border-amber-400 bg-white font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                          Custo Unit. (R$)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editPhUnitCost}
+                          onChange={(e) => setEditPhUnitCost(e.target.value)}
+                          className="w-full px-2 py-1 rounded border border-amber-400 bg-white font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                          Custo Extra (R$)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editPhExtraCost}
+                          onChange={(e) => setEditPhExtraCost(e.target.value)}
+                          className="w-full px-2 py-1 rounded border border-amber-400 bg-white font-bold"
+                        />
+                      </div>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Observação / Fornecedor"
+                      value={editPhNotes}
+                      onChange={(e) => setEditPhNotes(e.target.value)}
+                      className="w-full px-2.5 py-1 rounded border border-amber-300 bg-white"
+                    />
+                    <div className="flex justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setEditingPurchase(null)}
+                        className="px-2.5 py-1 rounded border border-slate-300 bg-white font-semibold cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updatePurchaseInInventoryItem(
+                            activePurchasingItem.id,
+                            editingPurchase.id,
+                            {
+                              quantity: Math.max(1, Number(editPhQty) || 1),
+                              unit_cost: Number(editPhUnitCost) || 0,
+                              extra_cost: Number(editPhExtraCost) || 0,
+                              supplier_or_notes: editPhNotes.trim(),
+                            }
+                          );
+                          setEditingPurchase(null);
+                        }}
+                        className="px-3 py-1 rounded bg-slate-900 text-white font-bold cursor-pointer"
+                      >
+                        Salvar Compra
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {activePurchasingItem.purchase_history &&
+                activePurchasingItem.purchase_history.length > 0 ? (
+                  <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+                    {activePurchasingItem.purchase_history.map((ph) => (
                       <div
                         key={ph.id}
-                        className="px-3 py-2 flex items-center justify-between text-[11px]"
+                        className="px-3 py-2 flex items-center justify-between gap-2 text-[11px]"
                       >
                         <div>
                           <span className="font-bold text-slate-900">
@@ -703,12 +841,49 @@ export default function EstoquePage() {
                             </span>
                           ) : null}
                           <div className="text-[10px] text-slate-500">
-                            {ph.supplier_or_notes || 'Compra registrada'}
+                            {ph.supplier_or_notes || 'Compra registrada'} •{' '}
+                            {new Date(ph.date).toLocaleDateString('pt-BR')}
                           </div>
                         </div>
-                        <div className="text-right text-[10px] text-slate-400">
-                          {new Date(ph.date).toLocaleDateString('pt-BR')}
-                        </div>
+
+                        {isAdmin && (
+                          <div className="inline-flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingPurchase(ph);
+                                setEditPhQty(String(ph.quantity || 1));
+                                setEditPhUnitCost(String(ph.unit_cost || 0));
+                                setEditPhExtraCost(String(ph.extra_cost || 0));
+                                setEditPhNotes(ph.supplier_or_notes || '');
+                              }}
+                              title="Editar Compra (Admin)"
+                              className="p-1 rounded border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 cursor-pointer"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Excluir esta compra de +${ph.quantity} un. e descontar do saldo do produto?`
+                                  )
+                                ) {
+                                  deletePurchaseFromInventoryItem(
+                                    activePurchasingItem.id,
+                                    ph.id,
+                                    true
+                                  );
+                                }
+                              }}
+                              title="Excluir Compra (Admin)"
+                              className="p-1 rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -722,7 +897,10 @@ export default function EstoquePage() {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setPurchasingItem(null)}
+                  onClick={() => {
+                    setPurchasingItem(null);
+                    setEditingPurchase(null);
+                  }}
                   className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold cursor-pointer"
                 >
                   Fechar
@@ -1069,12 +1247,85 @@ export default function EstoquePage() {
       {/* Modal Editar Produto / Lançar Custos de Manutenção */}
       {editingItem && (
         <div className="fixed inset-0 z-50 bg-slate-950/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-5 space-y-3.5 shadow-xl text-xs">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-5 space-y-3.5 shadow-xl text-xs max-h-[92vh] overflow-y-auto">
             <h3 className="text-sm font-bold text-slate-900">
               Editar Produto & Custos — {editingItem.brand} {editingItem.model}
             </h3>
 
             <form onSubmit={handleSaveEditItem} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Marca / Fabricante
+                  </label>
+                  <input
+                    type="text"
+                    value={editBrand}
+                    onChange={(e) => setEditBrand(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-semibold"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Nome / Modelo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editModel}
+                    onChange={(e) => setEditModel(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">
+                    Capacidade
+                  </label>
+                  <input
+                    type="text"
+                    value={editStorage}
+                    onChange={(e) => setEditStorage(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">
+                    Cor
+                  </label>
+                  <input
+                    type="text"
+                    value={editColor}
+                    onChange={(e) => setEditColor(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">
+                    IMEI
+                  </label>
+                  <input
+                    type="text"
+                    value={editImei}
+                    onChange={(e) => setEditImei(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">
+                    Bateria (%)
+                  </label>
+                  <input
+                    type="number"
+                    value={editBattery}
+                    onChange={(e) => setEditBattery(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
@@ -1239,6 +1490,53 @@ export default function EstoquePage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Admin: Confirmar Exclusão de Produto do Estoque */}
+      {isAdmin && deletingItem && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-rose-200 max-w-md w-full p-5 space-y-4 shadow-2xl text-xs">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  Excluir Produto do Estoque?
+                </h3>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Produto:{' '}
+                  <strong>
+                    {deletingItem.brand} {deletingItem.model}
+                  </strong>{' '}
+                  (Saldo atual: {deletingItem.quantity} un. • Preço:{' '}
+                  {formatCurrencyBRL(deletingItem.suggested_price)})
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setDeletingItem(null)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteInventoryItem(deletingItem.id);
+                  setDeletingItem(null);
+                }}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirmar Exclusão</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

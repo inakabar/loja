@@ -13,6 +13,7 @@ import {
   UserPlus,
   AlertTriangle,
   CheckCircle2,
+  Pencil,
 } from 'lucide-react';
 import { useStore } from '@/lib/context/StoreContext';
 import {
@@ -41,11 +42,16 @@ export default function ManutencaoPage() {
     serviceOrders,
     visibleInvestments,
     inventory,
+    hasRole,
     addCustomer,
     addServiceOrder,
+    updateServiceOrder,
+    deleteServiceOrder,
     updateServiceOrderStatus,
     confirmServiceOrderPartPurchase,
   } = useStore();
+
+  const isAdmin = hasRole('admin');
 
   const [showModal, setShowModal] = useState(false);
   const [orderType, setOrderType] = useState<'customer' | 'internal_stock'>(
@@ -105,6 +111,63 @@ export default function ManutencaoPage() {
   // Modal: Visualizar / Imprimir / Enviar Ordem de Serviço Profissional para o Cliente
   const [viewingOsReceipt, setViewingOsReceipt] =
     useState<ServiceOrder | null>(null);
+
+  // Estados Exclusivos do Admin: Editar OS e Excluir OS
+  const [editingOs, setEditingOs] = useState<ServiceOrder | null>(null);
+  const [editOsCustomerName, setEditOsCustomerName] = useState('');
+  const [editOsCustomerPhone, setEditOsCustomerPhone] = useState('');
+  const [editOsDeviceBrand, setEditOsDeviceBrand] = useState('');
+  const [editOsDeviceModel, setEditOsDeviceModel] = useState('');
+  const [editOsDeviceColor, setEditOsDeviceColor] = useState('');
+  const [editOsImei, setEditOsImei] = useState('');
+  const [editOsPassword, setEditOsPassword] = useState('');
+  const [editOsDefect, setEditOsDefect] = useState('');
+  const [editOsDiagnosis, setEditOsDiagnosis] = useState('');
+  const [editOsPartsCost, setEditOsPartsCost] = useState('0');
+  const [editOsServicePrice, setEditOsServicePrice] = useState('0');
+  const [editOsWarrantyDays, setEditOsWarrantyDays] = useState('90');
+  const [editOsStatus, setEditOsStatus] =
+    useState<ServiceOrder['status']>('em_bancada');
+
+  const [deletingOs, setDeletingOs] = useState<ServiceOrder | null>(null);
+
+  const handleOpenEditOsModal = (os: ServiceOrder) => {
+    setEditingOs(os);
+    setEditOsCustomerName(os.customer_name || '');
+    setEditOsCustomerPhone(os.customer_phone || '');
+    setEditOsDeviceBrand(os.device_brand || '');
+    setEditOsDeviceModel(os.device_model || '');
+    setEditOsDeviceColor(os.device_color || '');
+    setEditOsImei(os.imei || '');
+    setEditOsPassword(os.device_password || '');
+    setEditOsDefect(os.reported_defect || '');
+    setEditOsDiagnosis(os.technical_diagnosis || '');
+    setEditOsPartsCost(String(os.parts_cost ?? 0));
+    setEditOsServicePrice(String(os.service_price ?? 0));
+    setEditOsWarrantyDays(String(os.warranty_days ?? 90));
+    setEditOsStatus(os.status);
+  };
+
+  const handleSaveEditOs = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOs) return;
+    updateServiceOrder(editingOs.id, {
+      customer_name: editOsCustomerName.trim() || editingOs.customer_name,
+      customer_phone: editOsCustomerPhone.trim() || '-',
+      device_brand: editOsDeviceBrand.trim(),
+      device_model: editOsDeviceModel.trim(),
+      device_color: editOsDeviceColor.trim(),
+      imei: editOsImei.trim(),
+      device_password: editOsPassword.trim(),
+      reported_defect: editOsDefect.trim(),
+      technical_diagnosis: editOsDiagnosis.trim(),
+      parts_cost: Number(editOsPartsCost) || 0,
+      service_price: Number(editOsServicePrice) || 0,
+      warranty_days: Number(editOsWarrantyDays) || 90,
+      status: editOsStatus,
+    });
+    setEditingOs(null);
+  };
 
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
@@ -542,14 +605,39 @@ export default function ManutencaoPage() {
                       </td>
 
                       <td className="py-2.5 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setViewingOsReceipt(os)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer"
-                        >
-                          <FileText className="w-3 h-3 text-cyan-400" />
-                          <span>Ordem de Serviço / Cliente</span>
-                        </button>
+                        <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setViewingOsReceipt(os)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer"
+                          >
+                            <FileText className="w-3 h-3 text-cyan-400" />
+                            <span>Ordem de Serviço / Cliente</span>
+                          </button>
+
+                          {isAdmin && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditOsModal(os)}
+                                title="Editar Ordem de Serviço (Admin)"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 text-[11px] font-bold cursor-pointer"
+                              >
+                                <Pencil className="w-3 h-3 text-amber-700" />
+                                <span>Editar</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingOs(os)}
+                                title="Excluir Ordem de Serviço (Admin)"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 text-[11px] font-bold cursor-pointer"
+                              >
+                                <Trash2 className="w-3 h-3 text-rose-600" />
+                                <span>Excluir</span>
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1390,6 +1478,250 @@ export default function ManutencaoPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Admin: Editar Ordem de Serviço */}
+      {isAdmin && editingOs && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full p-5 space-y-4 shadow-2xl text-xs max-h-[92vh] overflow-y-auto">
+            <h3 className="text-sm font-bold text-slate-900">
+              Editar Ordem de Serviço — {editingOs.code} (Admin)
+            </h3>
+
+            <form onSubmit={handleSaveEditOs} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Cliente / Identificação *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editOsCustomerName}
+                    onChange={(e) => setEditOsCustomerName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Telefone WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    value={editOsCustomerPhone}
+                    onChange={(e) => setEditOsCustomerPhone(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">
+                    Marca
+                  </label>
+                  <input
+                    type="text"
+                    value={editOsDeviceBrand}
+                    onChange={(e) => setEditOsDeviceBrand(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Modelo *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editOsDeviceModel}
+                    onChange={(e) => setEditOsDeviceModel(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">
+                    Cor
+                  </label>
+                  <input
+                    type="text"
+                    value={editOsDeviceColor}
+                    onChange={(e) => setEditOsDeviceColor(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">
+                    IMEI
+                  </label>
+                  <input
+                    type="text"
+                    value={editOsImei}
+                    onChange={(e) => setEditOsImei(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-600 mb-1">
+                    Senha do Aparelho
+                  </label>
+                  <input
+                    type="text"
+                    value={editOsPassword}
+                    onChange={(e) => setEditOsPassword(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Defeito Relatado *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editOsDefect}
+                  onChange={(e) => setEditOsDefect(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Laudo / Diagnóstico Técnico
+                </label>
+                <input
+                  type="text"
+                  value={editOsDiagnosis}
+                  onChange={(e) => setEditOsDiagnosis(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div>
+                  <label className="block font-bold text-rose-700 mb-1">
+                    Custo Peças (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editOsPartsCost}
+                    onChange={(e) => setEditOsPartsCost(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-rose-300 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-emerald-700 mb-1">
+                    Valor Serviço (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editOsServicePrice}
+                    onChange={(e) => setEditOsServicePrice(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-emerald-400 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Garantia (Dias)
+                  </label>
+                  <input
+                    type="number"
+                    value={editOsWarrantyDays}
+                    onChange={(e) => setEditOsWarrantyDays(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Status
+                  </label>
+                  <select
+                    value={editOsStatus}
+                    onChange={(e) =>
+                      setEditOsStatus(e.target.value as ServiceOrder['status'])
+                    }
+                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
+                  >
+                    <option value="orcamento">Orçamento</option>
+                    <option value="aprovado">Aprovado</option>
+                    <option value="aguardando_peca">Aguardando Peça</option>
+                    <option value="em_bancada">Em Bancada</option>
+                    <option value="pronto">Pronto</option>
+                    <option value="entregue">Entregue</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingOs(null)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Admin: Confirmar Exclusão de Ordem de Serviço */}
+      {isAdmin && deletingOs && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-rose-200 max-w-md w-full p-5 space-y-4 shadow-2xl text-xs">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  Excluir Ordem de Serviço {deletingOs.code}?
+                </h3>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Cliente: <strong>{deletingOs.customer_name}</strong> • Aparelho:{' '}
+                  <strong>
+                    {deletingOs.device_brand} {deletingOs.device_model}
+                  </strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setDeletingOs(null)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteServiceOrder(deletingOs.id);
+                  setDeletingOs(null);
+                }}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirmar Exclusão</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

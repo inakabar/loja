@@ -10,6 +10,9 @@ import {
   GitBranch,
   Smartphone,
   Wallet,
+  Pencil,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { useStore } from '@/lib/context/StoreContext';
 import { calculateInvestmentMetrics } from '@/lib/calculators/crediario';
@@ -18,10 +21,17 @@ import {
   formatDateBR,
 } from '@/lib/calculators/spintax-whatsapp';
 import {
+  Investment,
+  InvestmentWithdrawal,
+  Sale,
   USER_ROLE_LABELS,
   WITHDRAWAL_REASON_LABELS,
   WithdrawalReasonType,
 } from '@/types/domain';
+import {
+  SaleDetailAndAdminModals,
+  SaleRowActions,
+} from '@/components/sales/SaleDetailAndAdminModals';
 
 export default function InvestimentosPage() {
   const {
@@ -36,9 +46,16 @@ export default function InvestimentosPage() {
     users,
     hasRole,
     addInvestment,
+    updateInvestment,
+    deleteInvestment,
     toggleUserAccessOnInvestment,
     createWithdrawal,
+    updateWithdrawal,
+    deleteWithdrawal,
+    deleteInventoryItem,
   } = useStore();
+
+  const isAdmin = hasRole('admin');
 
   const [selectedId, setSelectedId] = useState<string>(
     visibleInvestments[0]?.id || ''
@@ -62,6 +79,65 @@ export default function InvestimentosPage() {
   const [wdItemId, setWdItemId] = useState('');
   const [wdTargetInvId, setWdTargetInvId] = useState('');
   const [wdNotes, setWdNotes] = useState('');
+
+  // Estados de Detalhamento / Edição / Exclusão de Vendas na Planilha
+  const [viewingSale, setViewingSale] = useState<Sale | null>(null);
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
+
+  // Estados Admin: Editar / Excluir Planilha
+  const [editingInv, setEditingInv] = useState<Investment | null>(null);
+  const [editInvName, setEditInvName] = useState('');
+  const [editInvCapital, setEditInvCapital] = useState('0');
+  const [editInvDescription, setEditInvDescription] = useState('');
+  const [deletingInv, setDeletingInv] = useState<Investment | null>(null);
+
+  // Estados Admin: Editar / Excluir Retirada
+  const [editingWd, setEditingWd] = useState<InvestmentWithdrawal | null>(null);
+  const [editWdAmount, setEditWdAmount] = useState('0');
+  const [editWdReason, setEditWdReason] =
+    useState<WithdrawalReasonType>('custos_loja');
+  const [editWdNotes, setEditWdNotes] = useState('');
+  const [deletingWd, setDeletingWd] = useState<InvestmentWithdrawal | null>(
+    null
+  );
+
+  const handleOpenEditInv = (inv: Investment, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingInv(inv);
+    setEditInvName(inv.name);
+    setEditInvCapital(String(inv.initial_capital ?? 0));
+    setEditInvDescription(inv.description || '');
+  };
+
+  const handleSaveEditInv = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingInv || !editInvName.trim()) return;
+    updateInvestment(editingInv.id, {
+      name: editInvName.trim(),
+      initial_capital: Number(editInvCapital) || 0,
+      description: editInvDescription.trim(),
+    });
+    setEditingInv(null);
+  };
+
+  const handleOpenEditWd = (w: InvestmentWithdrawal) => {
+    setEditingWd(w);
+    setEditWdAmount(String(w.amount ?? 0));
+    setEditWdReason(w.reason_type);
+    setEditWdNotes(w.notes || '');
+  };
+
+  const handleSaveEditWd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWd) return;
+    updateWithdrawal(editingWd.id, {
+      amount: Number(editWdAmount) || 0,
+      reason_type: editWdReason,
+      notes: editWdNotes.trim() || undefined,
+    });
+    setEditingWd(null);
+  };
 
   const activeInv =
     visibleInvestments.find((i) => i.id === selectedId) ||
@@ -203,6 +279,9 @@ export default function InvestimentosPage() {
                 <th className="py-2 px-3 text-right">Estoque Vivo</th>
                 <th className="py-2 px-3 text-right">Lucro Líquido</th>
                 <th className="py-2 px-3">Usuários Liberados</th>
+                {isAdmin && (
+                  <th className="py-2 px-3 text-right">Ações (Admin)</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -277,6 +356,34 @@ export default function InvestimentosPage() {
                         {allowedUsersCount} usuários
                       </span>
                     </td>
+                    {isAdmin && (
+                      <td
+                        className="py-2.5 px-3 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={(e) => handleOpenEditInv(inv, e)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-semibold text-[11px] cursor-pointer"
+                          >
+                            <Pencil className="w-3 h-3 text-amber-700" />
+                            <span>Editar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeletingInv(inv);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 font-semibold text-[11px] cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Excluir</span>
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -363,6 +470,9 @@ export default function InvestimentosPage() {
                     <th className="py-2 px-3">Aparelho na Troca</th>
                     <th className="py-2 px-3 text-right">Crediário</th>
                     <th className="py-2 px-3 text-right">Total Final</th>
+                    <th className="py-2 px-3 text-right">
+                      Detalhamento / Ações
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -371,7 +481,11 @@ export default function InvestimentosPage() {
                       (i) => i.id === s.sold_item_id
                     );
                     return (
-                      <tr key={s.id} className="hover:bg-slate-50">
+                      <tr
+                        key={s.id}
+                        onClick={() => setViewingSale(s)}
+                        className="hover:bg-slate-50 cursor-pointer"
+                      >
                         <td className="py-2 px-3 font-bold text-slate-900">
                           {s.code}
                         </td>
@@ -414,6 +528,15 @@ export default function InvestimentosPage() {
                         </td>
                         <td className="py-2 px-3 text-right font-bold text-slate-900">
                           {formatCurrencyBRL(s.total_sale_final)}
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          <SaleRowActions
+                            sale={s}
+                            isAdmin={isAdmin}
+                            onView={setViewingSale}
+                            onEdit={setEditingSale}
+                            onDelete={setDeletingSale}
+                          />
                         </td>
                       </tr>
                     );
@@ -466,6 +589,9 @@ export default function InvestimentosPage() {
                       <th className="py-2 px-3 text-right">
                         Impacto na Planilha
                       </th>
+                      {isAdmin && (
+                        <th className="py-2 px-3 text-right">Ações (Admin)</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -505,13 +631,35 @@ export default function InvestimentosPage() {
                             {isIncoming ? '+' : '-'}
                             {formatCurrencyBRL(w.amount)}
                           </td>
+                          {isAdmin && (
+                            <td className="py-2 px-3 text-right">
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditWd(w)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-semibold text-[11px] cursor-pointer"
+                                >
+                                  <Pencil className="w-3 h-3 text-amber-700" />
+                                  <span>Editar</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeletingWd(w)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 font-semibold text-[11px] cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3 text-rose-600" />
+                                  <span>Excluir</span>
+                                </button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
                     {invWithdrawals.length === 0 && (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={isAdmin ? 7 : 6}
                           className="py-6 text-center text-slate-400"
                         >
                           Nenhuma retirada registrada nesta planilha.
@@ -536,6 +684,9 @@ export default function InvestimentosPage() {
                     <th className="py-2 px-3 text-right">Custo + Reparo</th>
                     <th className="py-2 px-3 text-right">Preço Sugerido</th>
                     <th className="py-2 px-3">Status</th>
+                    {isAdmin && (
+                      <th className="py-2 px-3 text-right">Ações (Admin)</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -578,6 +729,26 @@ export default function InvestimentosPage() {
                                 : 'Vendido'}
                         </span>
                       </td>
+                      {isAdmin && (
+                        <td className="py-2 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Deseja realmente excluir o produto "${item.brand} ${item.model}" desta planilha?`
+                                )
+                              ) {
+                                deleteInventoryItem(item.id);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 font-semibold text-[11px] cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3 text-rose-600" />
+                            <span>Excluir</span>
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -891,6 +1062,242 @@ export default function InvestimentosPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modais Compartilhados de Detalhamento, Edição e Exclusão de Venda */}
+      <SaleDetailAndAdminModals
+        viewingSale={viewingSale}
+        editingSale={editingSale}
+        deletingSale={deletingSale}
+        onCloseView={() => setViewingSale(null)}
+        onCloseEdit={() => setEditingSale(null)}
+        onCloseDelete={() => setDeletingSale(null)}
+        onSwitchViewToEdit={(sale) => setEditingSale(sale)}
+        onSwitchViewToDelete={(sale) => setDeletingSale(sale)}
+      />
+
+      {/* Modal Admin: Editar Planilha de Investimento */}
+      {isAdmin && editingInv && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-5 space-y-4 shadow-2xl text-xs">
+            <h3 className="text-sm font-bold text-slate-900">
+              Editar Planilha — {editingInv.name} (Admin)
+            </h3>
+            <form onSubmit={handleSaveEditInv} className="space-y-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Nome da Planilha *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editInvName}
+                  onChange={(e) => setEditInvName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Aporte Inicial (R$) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={editInvCapital}
+                  onChange={(e) => setEditInvCapital(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-bold"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Observações / Descrição
+                </label>
+                <input
+                  type="text"
+                  value={editInvDescription}
+                  onChange={(e) => setEditInvDescription(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingInv(null)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+                >
+                  Salvar Planilha
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Admin: Excluir Planilha de Investimento */}
+      {isAdmin && deletingInv && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-rose-200 max-w-md w-full p-5 space-y-4 shadow-2xl text-xs">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  Excluir Planilha &ldquo;{deletingInv.name}&rdquo;?
+                </h3>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Aporte inicial: {formatCurrencyBRL(deletingInv.initial_capital)}.
+                  Esta ação remove o registro da planilha no sistema.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setDeletingInv(null)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteInvestment(deletingInv.id);
+                  setDeletingInv(null);
+                }}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirmar Exclusão</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Admin: Editar Retirada */}
+      {isAdmin && editingWd && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-md w-full p-5 space-y-4 shadow-2xl text-xs">
+            <h3 className="text-sm font-bold text-slate-900">
+              Editar Retirada da Planilha (Admin)
+            </h3>
+            <form onSubmit={handleSaveEditWd} className="space-y-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Finalidade / Tipo da Retirada
+                </label>
+                <select
+                  value={editWdReason}
+                  onChange={(e) =>
+                    setEditWdReason(e.target.value as WithdrawalReasonType)
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-semibold"
+                >
+                  <option value="mover_planilha">
+                    1. Mover para outra planilha
+                  </option>
+                  <option value="uso_proprio">
+                    2. Retirada para uso próprio
+                  </option>
+                  <option value="custos_loja">
+                    3. Retirada para custos da loja
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Valor Abatido (R$) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={editWdAmount}
+                  onChange={(e) => setEditWdAmount(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-bold"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Observação / Motivo
+                </label>
+                <input
+                  type="text"
+                  value={editWdNotes}
+                  onChange={(e) => setEditWdNotes(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingWd(null)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold cursor-pointer"
+                >
+                  Salvar Retirada
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Admin: Excluir Retirada */}
+      {isAdmin && deletingWd && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-rose-200 max-w-md w-full p-5 space-y-4 shadow-2xl text-xs">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">
+                  Excluir Registro de Retirada?
+                </h3>
+                <p className="text-[11px] text-slate-600 mt-0.5">
+                  Valor: <strong>{formatCurrencyBRL(deletingWd.amount)}</strong> •{' '}
+                  {deletingWd.asset_type === 'device'
+                    ? `O aparelho (${deletingWd.inventory_item_name}) voltará para o estoque da planilha.`
+                    : 'O valor será estornado para o caixa líquido da planilha.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setDeletingWd(null)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteWithdrawal(deletingWd.id);
+                  setDeletingWd(null);
+                }}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirmar Exclusão</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

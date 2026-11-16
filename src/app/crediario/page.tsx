@@ -23,6 +23,11 @@ import {
   formatDateBR,
   isValidCPF,
 } from '@/lib/calculators/spintax-whatsapp';
+import { Sale } from '@/types/domain';
+import {
+  SaleDetailAndAdminModals,
+  SaleRowActions,
+} from '@/components/sales/SaleDetailAndAdminModals';
 
 export default function CrediarioPage() {
   const {
@@ -38,6 +43,13 @@ export default function CrediarioPage() {
     updateCustomer,
     createSaleWithTradeIn,
   } = useStore();
+
+  const isAdmin = hasRole('admin');
+
+  // Estados de Detalhamento / Edição / Exclusão de Contratos de Crediário
+  const [viewingSale, setViewingSale] = useState<Sale | null>(null);
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
 
   // 1. Combo que decide de onde vem o produto (Planilha ou Loja)
   const [selectedOriginId, setSelectedOriginId] = useState<string>(
@@ -1055,13 +1067,20 @@ export default function CrediarioPage() {
                 <th className="py-2 px-3">Troca</th>
                 <th className="py-2 px-3 text-right">Parcelamento</th>
                 <th className="py-2 px-3 text-right">Total Final</th>
+                <th className="py-2 px-3 text-right">
+                  Detalhamento / Ações
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {crediarioSales.map((s) => {
                 const inv = investments.find((i) => i.id === s.investment_id);
                 return (
-                  <tr key={s.id} className="hover:bg-slate-50">
+                  <tr
+                    key={s.id}
+                    onClick={() => setViewingSale(s)}
+                    className="hover:bg-slate-50 cursor-pointer"
+                  >
                     <td className="py-2 px-3 font-bold text-slate-900">
                       {s.code}
                     </td>
@@ -1097,6 +1116,15 @@ export default function CrediarioPage() {
                     </td>
                     <td className="py-2 px-3 text-right font-bold text-slate-900">
                       {formatCurrencyBRL(s.total_sale_final)}
+                    </td>
+                    <td className="py-2 px-3 text-right">
+                      <SaleRowActions
+                        sale={s}
+                        isAdmin={isAdmin}
+                        onView={setViewingSale}
+                        onEdit={setEditingSale}
+                        onDelete={setDeletingSale}
+                      />
                     </td>
                   </tr>
                 );
@@ -1171,6 +1199,18 @@ export default function CrediarioPage() {
           </div>
         </div>
       )}
+
+      {/* Modais Compartilhados de Detalhamento, Edição e Exclusão de Venda */}
+      <SaleDetailAndAdminModals
+        viewingSale={viewingSale}
+        editingSale={editingSale}
+        deletingSale={deletingSale}
+        onCloseView={() => setViewingSale(null)}
+        onCloseEdit={() => setEditingSale(null)}
+        onCloseDelete={() => setDeletingSale(null)}
+        onSwitchViewToEdit={(sale) => setEditingSale(sale)}
+        onSwitchViewToDelete={(sale) => setDeletingSale(sale)}
+      />
     </div>
   );
 }

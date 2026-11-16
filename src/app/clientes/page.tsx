@@ -8,6 +8,7 @@ import {
   Pencil,
   Search,
   AlertCircle,
+  Trash2,
 } from 'lucide-react';
 import { useStore } from '@/lib/context/StoreContext';
 import {
@@ -21,10 +22,14 @@ export default function ClientesPage() {
   const {
     customers,
     installments,
+    hasRole,
     addCustomer,
     updateCustomer,
+    deleteCustomer,
     toggleCustomerOptIn,
   } = useStore();
+
+  const isAdmin = hasRole('admin');
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -286,14 +291,35 @@ export default function ClientesPage() {
                       </td>
 
                       <td className="py-2.5 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditModal(c)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-300 hover:bg-slate-100 text-[11px] font-semibold text-slate-700 cursor-pointer"
-                        >
-                          <Pencil className="w-3 h-3 text-emerald-600" />
-                          <span>Editar</span>
-                        </button>
+                        <div className="inline-flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditModal(c)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-slate-300 hover:bg-slate-100 text-[11px] font-semibold text-slate-700 cursor-pointer"
+                          >
+                            <Pencil className="w-3 h-3 text-emerald-600" />
+                            <span>Editar</span>
+                          </button>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Deseja realmente excluir o cliente "${c.name}" do sistema?`
+                                  )
+                                ) {
+                                  deleteCustomer(c.id);
+                                }
+                              }}
+                              title="Excluir Cliente (Admin)"
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-[11px] font-semibold text-rose-800 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-600" />
+                              <span>Excluir</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

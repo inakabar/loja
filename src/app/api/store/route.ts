@@ -183,14 +183,24 @@ export async function POST(request: Request) {
       });
     }
 
-    // Exclusão de registro específico
+    // Exclusão de registro específico (unitário ou lista de IDs)
     if (body.action === 'delete_row') {
-      const { table, id } = body;
-      if (!table || !ALLOWED_TABLES.has(table) || !id) {
+      const { table, id, ids } = body;
+      if (!table || !ALLOWED_TABLES.has(table) || (!id && !Array.isArray(ids))) {
         return NextResponse.json(
           { ok: false, error: 'Parâmetros inválidos para exclusão' },
           { status: 400 }
         );
+      }
+      if (Array.isArray(ids) && ids.length > 0) {
+        const { error } = await supabase.from(table).delete().in('id', ids);
+        if (error) {
+          return NextResponse.json(
+            { ok: false, error: error.message },
+            { status: 500 }
+          );
+        }
+        return NextResponse.json({ ok: true });
       }
       const { error } = await supabase.from(table).delete().eq('id', id);
       if (error) {

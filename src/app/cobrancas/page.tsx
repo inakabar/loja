@@ -14,6 +14,8 @@ import {
   DollarSign,
   Eye,
   Terminal,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { useStore } from '@/lib/context/StoreContext';
 import { calculateInstallmentLateFees } from '@/lib/calculators/crediario';
@@ -42,10 +44,20 @@ export default function CobrancasPage() {
     settings,
     collectionLogs,
     currentUser,
+    hasRole,
     canAccessInvestment,
     payInstallment,
+    updateInstallment,
+    deleteInstallment,
     recordCollectionSent,
   } = useStore();
+
+  const isAdmin = hasRole('admin');
+  const [editingInst, setEditingInst] = useState<Installment | null>(null);
+  const [editInstDueDate, setEditInstDueDate] = useState('');
+  const [editInstAmount, setEditInstAmount] = useState('0');
+  const [editInstStatus, setEditInstStatus] =
+    useState<Installment['status']>('pending');
 
   const connectorUrl =
     process.env.NEXT_PUBLIC_WHATSAPP_CONNECTOR_URL || 'http://localhost:3001';
@@ -509,6 +521,41 @@ export default function CobrancasPage() {
                         >
                           <Send className="w-3.5 h-3.5" />
                         </a>
+                        {isAdmin && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingInst(plan.installment);
+                                setEditInstDueDate(plan.installment.due_date);
+                                setEditInstAmount(
+                                  String(plan.installment.original_amount)
+                                );
+                                setEditInstStatus(plan.installment.status);
+                              }}
+                              title="Editar Parcela (Admin)"
+                              className="p-1.5 rounded border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 cursor-pointer"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Excluir a parcela ${plan.installment.installment_number}/${plan.installment.total_installments} de ${plan.installment.customer_name}?`
+                                  )
+                                ) {
+                                  deleteInstallment(plan.installment.id);
+                                }
+                              }}
+                              title="Excluir Parcela (Admin)"
+                              className="p-1.5 rounded border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -652,6 +699,87 @@ export default function CobrancasPage() {
                 Confirmar Baixa
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Admin: Editar Parcela */}
+      {isAdmin && editingInst && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 max-w-sm w-full p-5 space-y-4 shadow-2xl text-xs">
+            <h3 className="text-sm font-bold text-slate-900">
+              Editar Parcela {editingInst.installment_number}/
+              {editingInst.total_installments} — {editingInst.customer_name} (Admin)
+            </h3>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                updateInstallment(editingInst.id, {
+                  due_date: editInstDueDate,
+                  original_amount: Number(editInstAmount) || 0,
+                  status: editInstStatus,
+                });
+                setEditingInst(null);
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Data de Vencimento *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={editInstDueDate}
+                  onChange={(e) => setEditInstDueDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Valor Original da Parcela (R$) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={editInstAmount}
+                  onChange={(e) => setEditInstAmount(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-bold"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Status da Parcela
+                </label>
+                <select
+                  value={editInstStatus}
+                  onChange={(e) =>
+                    setEditInstStatus(e.target.value as Installment['status'])
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-semibold"
+                >
+                  <option value="pending">Em Aberto / Pendente</option>
+                  <option value="paid">Paga</option>
+                  <option value="loss">Baixada como Perda</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingInst(null)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-lg bg-slate-900 text-white font-bold cursor-pointer"
+                >
+                  Salvar Parcela
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
