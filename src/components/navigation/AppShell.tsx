@@ -158,7 +158,7 @@ function LoginScreen() {
               type="text"
               required
               autoFocus
-              placeholder="Ex: admin"
+              placeholder="Digite seu usuário ou e-mail"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg bg-slate-950 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
@@ -206,13 +206,6 @@ function LoginScreen() {
             <span>Entrar no Sistema</span>
           </button>
         </form>
-
-        <div className="pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-          <span>Primeiro acesso Admin:</span>
-          <code className="px-2 py-0.5 rounded bg-slate-950 text-emerald-300 border border-slate-800">
-            admin / admin123
-          </code>
-        </div>
       </div>
     </div>
   );
